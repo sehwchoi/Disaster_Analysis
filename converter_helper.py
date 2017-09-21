@@ -72,13 +72,52 @@ state_time_zone = {
     "MP":"ChST"
 }
 
+postal = {'WA': 'WASHINGTON', 'VA': 'VIRGINIA', 'DE': 'DELAWARE', 'DC': 'DISTRICT OF COLUMBIA',
+          'WI': 'WISCONSIN', 'WV': 'WEST VIRGINIA', 'HI': 'HAWAII', 'FL': 'FLORIDA',
+          'FM': 'FEDERATED STATES OF MICRONESIA', 'WY': 'WYOMING', 'NH': 'NEW HAMPSHIRE', 'NJ': 'NEW JERSEY',
+          'NM': 'NEW MEXICO', 'TX': 'TEXAS', 'LA': 'LOUISIANA', 'NC': 'NORTH CAROLINA', 'ND': 'NORTH DAKOTA',
+          'NE': 'NEBRASKA', 'TN': 'TENNESSEE', 'NY': 'NEW YORK', 'PA': 'PENNSYLVANIA', 'CA': 'CALIFORNIA',
+          'NV': 'NEVADA', 'PW': 'PALAU', 'GU': 'GUAM GU', 'CO': 'COLORADO', 'VI': 'VIRGIN ISLANDS', 'AK': 'ALASKA',
+          'AL': 'ALABAMA', 'AS': 'AMERICAN SAMOA', 'AR': 'ARKANSAS', 'VT': 'VERMONT', 'IL': 'ILLINOIS', 'GA': 'GEORGIA',
+          'IN': 'INDIANA', 'IA': 'IOWA', 'OK': 'OKLAHOMA', 'AZ': 'ARIZONA', 'ID': 'IDAHO', 'CT': 'CONNECTICUT',
+          'ME': 'MAINE', 'MD': 'MARYLAND', 'MA': 'MASSACHUSETTS', 'OH': 'OHIO', 'UT': 'UTAH', 'MO': 'MISSOURI',
+          'MN': 'MINNESOTA', 'MI': 'MICHIGAN', 'MH': 'MARSHALL ISLANDS', 'RI': 'RHODE ISLAND', 'KS': 'KANSAS',
+          'MT': 'MONTANA', 'MP': 'NORTHERN MARIANA ISLANDS', 'MS': 'MISSISSIPPI', 'PR': 'PUERTO RICO', 'SC': 'SOUTH CAROLINA',
+          'KY': 'KENTUCKY', 'OR': 'OREGON', 'SD': 'SOUTH DAKOTA'}
 
+def read_2010_census():
+    census = {}
+    with open("2010_census.txt") as file:
+        for line in file:
+            (state,popu) = line.split()
+            census[state] = popu
+    return census
+
+state_census = read_2010_census()
+print(state_census)
+
+def get_top_state_census(states):
+    census = 0
+    top_state = states[0]
+    for state in states:
+        print("state census : " + str(state_census[state]) + " compare census : " + str(census))
+        census_to_compare = int(state_census[state])
+        if census_to_compare > census:
+            census = census_to_compare
+            top_state = state
+    return top_state  
+
+    
 def convert_state_to_time(state):
-    if "|" not in state:
-        zone = state_time_zone[state]
-        return utc_zone[zone]
+    if "|" in state:
+        states= state.split('|')
+        print(states)
+        top_state = get_top_state_census(states)
+        print(top_state)
+        zone = state_time_zone[top_state]
     else:
-        return ""
+        zone = state_time_zone[state]
+    return utc_zone[zone]
 
 
 offsets = []
