@@ -72,12 +72,14 @@ state_time_zone = {
     "MP":"ChST"
 }
 
+
 def convert_state_to_time(state):
     if "|" not in state:
         zone = state_time_zone[state]
         return utc_zone[zone]
     else:
         return ""
+
 
 offsets = []
 csv_input = pd.read_csv("incident_metadata.csv")
@@ -86,12 +88,12 @@ for row in csv_input["states"]:
 csv_input["UTC"] = offsets
 csv_input.to_csv("incident_metadata.csv")
 
+
 '''utc_created_at => Wed Aug 27 13:08:45 +0000 2008
    utc_offset => UTC-4
    
 '''
-
-def convert_utc_to_regtime(utc_created_at, utc_offset):
+def convert_utc_to_loctime(utc_created_at, utc_offset):
     utc_time = datetime.datetime.strptime(utc_created_at, "%a %b %d %H:%M:%S +0000 %Y")
     offset_search = re.search(r'\d+', utc_offset)
     offset = 0
@@ -104,14 +106,16 @@ def convert_utc_to_regtime(utc_created_at, utc_offset):
         local_time = utc_time + datetime.timedelta(hours=offset)
     else:
         raiseExceptions
-    print(utc_offset + " , " + str(offset))
-    print("UTC Time - " + str(utc_time))
-    print("Local Time - " + str(local_time))
+    #print(utc_offset + " , " + str(offset))
+    #print("UTC Time - " + str(utc_time))
+    #print("Local Time - " + str(local_time))
     return local_time
 
 
 for row in csv_input["UTC"]:
-    convert_utc_to_regtime("Wed Aug 27 15:08:45 +0000 2008", row)
+    convert_utc_to_loctime("Wed Aug 27 15:08:45 +0000 2008", row)
+
+# TODO MAIN
 
 # with open("incident_metadata.csv", 'r+') as csvfile:
 #     reader = csv.reader(csvfile)
