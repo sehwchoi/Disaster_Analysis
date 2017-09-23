@@ -107,23 +107,59 @@ def get_top_state_census(states):
             top_state = state
     return top_state  
 
+def get_most_timezone(states):
+    popu_timezones = {}
+    for state in states:
+        timezone = state_time_zone[state]
+        popu = int(state_census[state])
+        print("state : {} timezone : {} census : {}".format(state, timezone, popu))
+
+        if timezone in popu_timezones:
+            total_popu = popu_timezones[timezone]
+            new_total_popu = total_popu + popu
+            print("prev_total_popu : {} new_total_popu : {}".format(total_popu, new_total_popu))
+        else:
+            new_total_popu = popu
+
+        popu_timezones[timezone] = new_total_popu
     
+    top_zone = ""
+    total_census = 0
+    for zone, census in popu_timezones.items():
+        print("zone : {} census : {}".format(zone, census))
+        census_to_compare = census
+        if census_to_compare > total_census:
+            total_census = census_to_compare
+            top_zone = zone
+    print("top zone : {}".format(top_zone))
+    return top_zone
+
+count_multi_states = 0
+
 def convert_state_to_time(state):
+    global count_multi_states
     if "|" in state:
+        count_multi_states += 1
         states= state.split('|')
         print(states)
-        top_state = get_top_state_census(states)
-        print(top_state)
-        zone = state_time_zone[top_state]
+        #top_state = get_top_state_census(states)
+        #print(top_state)
+        zone = get_most_timezone(states)
     else:
         zone = state_time_zone[state]
+    
     return utc_zone[zone]
 
 
 offsets = []
 csv_input = pd.read_csv("incident_metadata.csv")
+count_total = len(csv_input["states"])
+print("total items" + str(count_total))
+
 for row in csv_input["states"]:
     offsets.append(convert_state_to_time(row))
+
+print("multi states" + str(count_multi_states))
 csv_input["UTC"] = offsets
 csv_input.to_csv("incident_metadata.csv")
 
