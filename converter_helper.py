@@ -3,7 +3,7 @@ import csv
 import re
 from pytz import timezone
 import datetime
-from logging import raiseExceptions
+import logging, sys
 
 utc_zone = {
     "HST":"UTC-10",
@@ -85,6 +85,118 @@ postal = {'WA': 'WASHINGTON', 'VA': 'VIRGINIA', 'DE': 'DELAWARE', 'DC': 'DISTRIC
           'MT': 'MONTANA', 'MP': 'NORTHERN MARIANA ISLANDS', 'MS': 'MISSISSIPPI', 'PR': 'PUERTO RICO', 'SC': 'SOUTH CAROLINA',
           'KY': 'KENTUCKY', 'OR': 'OREGON', 'SD': 'SOUTH DAKOTA'}
 
+class TimezoneConverter(object):
+
+    def __init__(self, file_name):
+        self.utc_offsets = []
+        self.event_zone_dic = {}
+        self.count_multi_states = 0
+        csv_input = pd.read_csv(file_name)
+        # iterate states and find corresponding zones
+        for state in csv_input["states"]:
+            # TODO find better way to handle getting one row from panda data frame
+            event_id = csv_input.loc[csv_input['states'] == state, 'incident_id'].iloc[0]
+            logging.debug('event_id {}'.format(event_id))
+            zone = self.find_zone(state)
+            self.event_zone_dic[event_id] = zone
+            # add corresponding UTC offset for zone
+            self.utc_offsets.append(utc_zone[zone])
+
+        self.count_total = len(csv_input["states"])
+        logging.debug("total items " + str(self.count_total))
+        logging.debug("multi states " + str(self.count_multi_states))
+        # add UTC offsets to csv file
+        csv_input["UTC"] = self.utc_offsets
+        csv_input.to_csv("incident_metadata.csv")
+    
+    def get_most_timezone(self, states):
+        popu_timezones = {}
+        for state in states:
+            timezone = state_time_zone[state]
+            popu = int(state_census[state])
+            logging.debug("state : {} timezone : {} census : {}".format(state, timezone, popu))
+
+            if timezone in popu_timezones:
+                total_popu = popu_timezones[timezone]
+                new_total_popu = total_popu + popu
+                logging.debug("prev_total_popu : {} new_total_popu : {}".format(total_popu, new_total_popu))
+            else:   
+                new_total_popu = popu
+
+            popu_timezones[timezone] = new_total_popu
+    
+        top_zone = ""
+        total_census = 0
+        for zone, census in popu_timezones.items():
+            logging.debug("zone : {} census : {}".format(zone, census))
+            census_to_compare = census
+            if census_to_compare > total_census:
+                total_census = census_to_compare
+                top_zone = zone
+        logging.debug("top zone : {}".format(top_zone))
+        return top_zone
+    
+    #  find zone for given state. If there are multiples states, then select zone
+    #  that covers the most number of population
+    def find_zone(self, state):
+        if "|" in state:
+            self.count_multi_states += 1
+            states= state.split('|')
+            logging.debug(states)
+            zone = self.get_most_timezone(states)
+        else:
+            zone = state_time_zone[state]
+        return zone
+    
+    #  find zone given the event id
+    #  utc_created_at => Wed Aug 27 13:08:45 +0000 2008
+    #  devent_id => 270 (int)
+    #  TODO use pytz to convert time usnig zone
+    def convert_to_loctime_from_event(self, utc_created_at, event_id):
+        utc_time = datetime.datetime.strptime(utc_created_at, "%a %b %d %H:%M:%S +0000 %Y")
+        zone = self.event_zone_dic[event_id]
+        logging.debug(event_id)
+        logging.debug(zone)
+        utc_offset = utc_zone[zone]
+        logging.debug(utc_offset)
+        offset_search = re.search(r'\d+', utc_offset)
+        offset = 0
+        local_time = ""
+        if offset_search is not None:
+            offset = int(offset_search.group())
+        if "-" in utc_offset:
+            local_time = utc_time - datetime.timedelta(hours=offset)
+        elif "+" in utc_offset:
+            local_time = utc_time + datetime.timedelta(hours=offset)
+        else:
+            raiseExceptions
+        logging.debug(utc_offset + " , " + str(offset))
+        logging.debug("UTC Time - " + str(utc_time))
+        logging.debug("Local Time - " + str(local_time))
+        return local_time
+    
+    # convert UTC time to local time
+    #  utc_created_at => Wed Aug 27 13:08:45 +0000 2008
+    #  utc_offset => UTC-4
+    def convert_utc_to_loctime(self, utc_created_at, utc_offset):
+        utc_time = datetime.datetime.strptime(utc_created_at, "%a %b %d %H:%M:%S +0000 %Y")
+        offset_search = re.search(r'\d+', utc_offset)
+        offset = 0
+        local_time = ""
+        if offset_search is not None:
+            offset = int(offset_search.group())
+        if "-" in utc_offset:
+            local_time = utc_time - datetime.timedelta(hours=offset)
+        elif "+" in utc_offset:
+            local_time = utc_time + datetime.timedelta(hours=offset)
+        else:
+            raiseExceptions
+        logging.debug(utc_offset + " , " + str(offset))
+        logging.debug("UTC Time - " + str(utc_time))
+        logging.debug("Local Time - " + str(local_time))
+        return local_time
+
+# read 2010 census data for each state and saves them into dictionary ex. {CA: 52}
 def read_2010_census():
     census = {}
     with open("2010_census.txt") as file:
@@ -93,112 +205,12 @@ def read_2010_census():
             census[state] = popu
     return census
 
-state_census = read_2010_census()
-print(state_census)
 
-def get_top_state_census(states):
-    census = 0
-    top_state = states[0]
-    for state in states:
-        print("state census : " + str(state_census[state]) + " compare census : " + str(census))
-        census_to_compare = int(state_census[state])
-        if census_to_compare > census:
-            census = census_to_compare
-            top_state = state
-    return top_state  
-
-def get_most_timezone(states):
-    popu_timezones = {}
-    for state in states:
-        timezone = state_time_zone[state]
-        popu = int(state_census[state])
-        print("state : {} timezone : {} census : {}".format(state, timezone, popu))
-
-        if timezone in popu_timezones:
-            total_popu = popu_timezones[timezone]
-            new_total_popu = total_popu + popu
-            print("prev_total_popu : {} new_total_popu : {}".format(total_popu, new_total_popu))
-        else:
-            new_total_popu = popu
-
-        popu_timezones[timezone] = new_total_popu
-    
-    top_zone = ""
-    total_census = 0
-    for zone, census in popu_timezones.items():
-        print("zone : {} census : {}".format(zone, census))
-        census_to_compare = census
-        if census_to_compare > total_census:
-            total_census = census_to_compare
-            top_zone = zone
-    print("top zone : {}".format(top_zone))
-    return top_zone
-
-count_multi_states = 0
-
-def convert_state_to_time(state):
-    global count_multi_states
-    if "|" in state:
-        count_multi_states += 1
-        states= state.split('|')
-        print(states)
-        #top_state = get_top_state_census(states)
-        #print(top_state)
-        zone = get_most_timezone(states)
-    else:
-        zone = state_time_zone[state]
-    
-    return utc_zone[zone]
-
-
-offsets = []
-csv_input = pd.read_csv("incident_metadata.csv")
-count_total = len(csv_input["states"])
-print("total items" + str(count_total))
-
-for row in csv_input["states"]:
-    offsets.append(convert_state_to_time(row))
-
-print("multi states" + str(count_multi_states))
-csv_input["UTC"] = offsets
-csv_input.to_csv("incident_metadata.csv")
-
-
-'''utc_created_at => Wed Aug 27 13:08:45 +0000 2008
-   utc_offset => UTC-4
-   
-'''
-def convert_utc_to_loctime(utc_created_at, utc_offset):
-    utc_time = datetime.datetime.strptime(utc_created_at, "%a %b %d %H:%M:%S +0000 %Y")
-    offset_search = re.search(r'\d+', utc_offset)
-    offset = 0
-    local_time = ""
-    if offset_search is not None:
-        offset = int(offset_search.group())
-    if "-" in utc_offset:
-        local_time = utc_time - datetime.timedelta(hours=offset)
-    elif "+" in utc_offset:
-        local_time = utc_time + datetime.timedelta(hours=offset)
-    else:
-        raiseExceptions
-    #print(utc_offset + " , " + str(offset))
-    #print("UTC Time - " + str(utc_time))
-    #print("Local Time - " + str(local_time))
-    return local_time
-
-
-for row in csv_input["UTC"]:
-    convert_utc_to_loctime("Wed Aug 27 15:08:45 +0000 2008", row)
-
-# TODO MAIN
-
-# with open("incident_metadata.csv", 'r+') as csvfile:
-#     reader = csv.reader(csvfile)
-#     for row in reader:
-#         if row[-1] is not "states":
-#             state = row[-1]
-#             if '|' not in state:
-#                 print(state)
-#                 row.append('a')
-#                 
-#         
+if __name__ == "__main__":
+    logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+    state_census = read_2010_census()
+    logging.debug(state_census)
+     
+    TimeConverter = TimezoneConverter("incident_metadata.csv")
+    print(TimeConverter.convert_utc_to_loctime("Wed Aug 27 15:08:45 +0000 2008", "UTC-8"))
+    print(TimeConverter.convert_to_loctime_from_event("Wed Aug 27 15:08:45 +0000 2008", 119)) # event 119, time zone CST, UTC-6
