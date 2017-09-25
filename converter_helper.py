@@ -97,7 +97,7 @@ class TimezoneConverter(object):
             # TODO find better way to handle getting one row from panda data frame
             event_id = csv_input.loc[csv_input['states'] == state, 'incident_id'].iloc[0]
             logging.debug('event_id {}'.format(event_id))
-            zone = self.find_zone(state)
+            zone = self.__find_zone(state)
             self.event_zone_dic[event_id] = zone
             # add corresponding UTC offset for zone
             self.utc_offsets.append(utc_zone[zone])
@@ -109,7 +109,7 @@ class TimezoneConverter(object):
         csv_input["UTC"] = self.utc_offsets
         csv_input.to_csv("incident_metadata.csv")
     
-    def get_most_timezone(self, states):
+    def __get_most_timezone(self, states):
         popu_timezones = {}
         for state in states:
             timezone = state_time_zone[state]
@@ -138,12 +138,12 @@ class TimezoneConverter(object):
     
     #  find zone for given state. If there are multiples states, then select zone
     #  that covers the most number of population
-    def find_zone(self, state):
+    def __find_zone(self, state):
         if "|" in state:
             self.count_multi_states += 1
             states= state.split('|')
             logging.debug(states)
-            zone = self.get_most_timezone(states)
+            zone = self.__get_most_timezone(states)
         else:
             zone = state_time_zone[state]
         return zone
