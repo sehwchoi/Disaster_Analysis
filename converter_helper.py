@@ -93,14 +93,13 @@ class TimezoneConverter(object):
         self.count_multi_states = 0
         csv_input = pd.read_csv(file_name)
         # iterate states and find corresponding zones
-        for state in csv_input["states"]:
-            # TODO find better way to handle getting one row from panda data frame
-            event_id = csv_input.loc[csv_input['states'] == state, 'incident_id'].iloc[0]
-            logging.debug('event_id {}'.format(event_id))
+        for index, row in csv_input.iterrows():
+            event_id = row['incident_id']
+            logging.debug('event_id {}'.format(event_id))  
+            state = row['states']
             zone = self.__find_zone(state)
             self.event_zone_dic[event_id] = zone
-            # add corresponding UTC offset for zone
-            self.utc_offsets.append(utc_zone[zone])
+            self.utc_offsets.append(utc_zone[zone])  
 
         self.count_total = len(csv_input["states"])
         logging.debug("total items " + str(self.count_total))
