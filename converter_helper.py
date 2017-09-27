@@ -106,7 +106,7 @@ class TimezoneConverter(object):
         logging.debug("multi states " + str(self.count_multi_states))
         # add UTC offsets to csv file
         csv_input["UTC"] = self.utc_offsets
-        csv_input.to_csv("incident_metadata.csv")
+        csv_input.to_csv("incident_metadata.csv", mode = 'w', index=False)
     
     def __get_most_timezone(self, states):
         popu_timezones = {}
