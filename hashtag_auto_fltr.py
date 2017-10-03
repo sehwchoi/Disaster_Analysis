@@ -30,9 +30,10 @@ class HashtagAutoFltr(object):
 
 if __name__ == '__main__':
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
-    hashtag_list_files = ["top_hashtag.txt"]
+    hashtag_list_files = ["top_hashtag_rev.txt", "slangs1_rev.txt"]
     fixed_file_name = '_hashtag_counts.csv'
-    target_files = ['340'+fixed_file_name]
+    target_files = ['340', '149', '150']
     filtering = HashtagAutoFltr(hashtag_list_files)
-    filtering.filter_out(target_files[0])
+    for file in target_files:
+        filtering.filter_out(file+fixed_file_name)
     
