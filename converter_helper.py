@@ -85,11 +85,10 @@ postal = {'WA': 'WASHINGTON', 'VA': 'VIRGINIA', 'DE': 'DELAWARE', 'DC': 'DISTRIC
           'MT': 'MONTANA', 'MP': 'NORTHERN MARIANA ISLANDS', 'MS': 'MISSISSIPPI', 'PR': 'PUERTO RICO', 'SC': 'SOUTH CAROLINA',
           'KY': 'KENTUCKY', 'OR': 'OREGON', 'SD': 'SOUTH DAKOTA'}
 
-class TimezoneConverter(object):
+class UTCUpdater(object):
 
     def __init__(self, file_name):
         self.utc_offsets = []
-        self.event_zone_dic = {}
         self.count_multi_states = 0
         csv_input = pd.read_csv(file_name)
         # iterate states and find corresponding zones
@@ -98,7 +97,6 @@ class TimezoneConverter(object):
             logging.debug('event_id {}'.format(event_id))  
             state = row['states']
             zone = self.__find_zone(state)
-            self.event_zone_dic[event_id] = zone
             self.utc_offsets.append(utc_zone[zone])  
 
         self.count_total = len(csv_input["states"])
@@ -146,17 +144,28 @@ class TimezoneConverter(object):
         else:
             zone = state_time_zone[state]
         return zone
+
+
+class TimezoneConverter(object):
     
+    def __init__(self, file_name):
+        self.event_utc_dic = {}
+        csv_input = pd.read_csv(file_name)
+        # iterate states and find corresponding zones
+        for index, row in csv_input.iterrows():
+            event_id = row['incident_id']
+            logging.debug('event_id {}'.format(event_id))
+            utc_offset = row['UTC']
+            self.event_utc_dic[event_id] = utc_offset
+
     #  find zone given the event id
     #  utc_created_at => Wed Aug 27 13:08:45 +0000 2008
     #  devent_id => 270 (int)
-    #  TODO use pytz to convert time usnig zone
+    #  TODO use pytz to convert time using zone
     def convert_to_loctime_from_event(self, utc_created_at, event_id):
         utc_time = datetime.datetime.strptime(utc_created_at, "%a %b %d %H:%M:%S +0000 %Y")
-        zone = self.event_zone_dic[event_id]
+        utc_offset = self.event_utc_dic[event_id]
         logging.debug(event_id)
-        logging.debug(zone)
-        utc_offset = utc_zone[zone]
         logging.debug(utc_offset)
         offset_search = re.search(r'\d+', utc_offset)
         offset = 0
@@ -209,7 +218,8 @@ if __name__ == "__main__":
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
     state_census = read_2010_census()
     logging.debug(state_census)
-     
-    TimeConverter = TimezoneConverter("incident_metadata.csv")
-    print(TimeConverter.convert_utc_to_loctime("Wed Aug 27 15:08:45 +0000 2008", "UTC-8"))
-    print(TimeConverter.convert_to_loctime_from_event("Wed Aug 27 15:08:45 +0000 2008", 119)) # event 119, time zone CST, UTC-6
+    
+    updater = UTCUpdater("incident_metadata.csv")
+    #TimeConverter = TimezoneConverter("incident_metadata.csv")
+    #print(TimeConverter.convert_utc_to_loctime("Wed Aug 27 15:08:45 +0000 2008", "UTC-8"))
+    #print(TimeConverter.convert_to_loctime_from_event("Wed Aug 27 15:08:45 +0000 2008", 119)) # event 119, time zone CST, UTC-6
