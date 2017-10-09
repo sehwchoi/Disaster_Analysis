@@ -150,11 +150,21 @@ class TimezoneConverter(object):
     
     def __init__(self, file_name):
         self.event_utc_dic = {}
+        self.event_times = {} # {event id : (begin, end)}
         csv_input = pd.read_csv(file_name)
         # iterate states and find corresponding zones
         for index, row in csv_input.iterrows():
             event_id = row['incident_id']
-            logging.debug('event_id {}'.format(event_id))
+            event_begin = row['incidentBeginDate']
+            event_end = row['incidentEndDate']
+            # string date format: 2011-07-14
+            time_begin = datetime.datetime.strptime(event_begin, '%Y-%m-%d')
+            time_end = datetime.datetime.strptime(event_end, '%Y-%m-%d')
+            logging.debug("Time for id:{} begin:{} end:{}".format(event_id, str(time_begin), str(time_end)))
+        
+            self.event_times[event_id] = (time_begin, time_end)
+
+            #logging.debug('event_id {}'.format(event_id))
             utc_offset = row['UTC']
             self.event_utc_dic[event_id] = utc_offset
 
@@ -165,8 +175,8 @@ class TimezoneConverter(object):
     def convert_to_loctime_from_event(self, utc_created_at, event_id):
         utc_time = datetime.datetime.strptime(utc_created_at, "%a %b %d %H:%M:%S +0000 %Y")
         utc_offset = self.event_utc_dic[event_id]
-        logging.debug(event_id)
-        logging.debug(utc_offset)
+        #logging.debug(event_id)
+        #logging.debug(utc_offset)
         offset_search = re.search(r'\d+', utc_offset)
         offset = 0
         local_time = ""
@@ -178,9 +188,9 @@ class TimezoneConverter(object):
             local_time = utc_time + datetime.timedelta(hours=offset)
         else:
             raiseExceptions
-        logging.debug(utc_offset + " , " + str(offset))
-        logging.debug("UTC Time - " + str(utc_time))
-        logging.debug("Local Time - " + str(local_time))
+        #logging.debug(utc_offset + " , " + str(offset))
+        #logging.debug("UTC Time - " + str(utc_time))
+        #logging.debug("Local Time - " + str(local_time))
         return local_time
     
     # convert UTC time to local time
@@ -199,10 +209,16 @@ class TimezoneConverter(object):
             local_time = utc_time + datetime.timedelta(hours=offset)
         else:
             raiseExceptions
-        logging.debug(utc_offset + " , " + str(offset))
-        logging.debug("UTC Time - " + str(utc_time))
+        #logging.debug(utc_offset + " , " + str(offset))
+        #logging.debug("UTC Time - " + str(utc_time))
         logging.debug("Local Time - " + str(local_time))
         return local_time
+    
+    # return a tuple of (event begin time, event end time)
+    def getEventTimes(self, event_id):
+        logging.debug("Time for id:{} begin:{} end:{}".format(event_id,
+                        str(self.event_times[event_id][0]), str(self.event_times[event_id][1])))
+        return self.event_times[event_id]
 
 # read 2010 census data for each state and saves them into dictionary ex. {CA: 52}
 def read_2010_census():
