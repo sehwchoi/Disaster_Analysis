@@ -28,7 +28,7 @@ class TwitterPeriodClf(object):
     def __is_duplication(self, cand_tweet_id, infos):
         for info in infos:
             if cand_tweet_id == info['t_id']:
-                logging.debug("this tweet is duplication")
+                logging.debug("this tweet {} is duplication with info {}".format(cand_tweet_id, info))
                 return True
     
         return False
@@ -74,34 +74,38 @@ class TwitterPeriodClf(object):
                 't_id' : tweet['id'],
                 'u_id' : user_id,
                 'time' : tweet_date_utc }
-
+            
+            # logging.debug("tweet info {}" + str(info))
             if tweet_date_local < self.ev_begin:
-                #logging.debug("added to before list")
+                # logging.debug("added to before list")
                 if not self.__is_duplication(info['t_id'],  self.user_infos[user_id][0]):
                     self.user_infos[user_id][0].append(info) # Before the event start
             elif tweet_date_local > self.ev_end:
-                #logging.debug("added to after list")
+                # logging.debug("added to after list")
                 if not self.__is_duplication(info['t_id'],  self.user_infos[user_id][1]):
                     self.user_infos[user_id][1].append(info) # After the event start
             else:
-                #logging.debug("added to during list")
+                # logging.debug("added to during list")
                 if not self.__is_duplication(info['t_id'],  self.user_infos[user_id][2]):
                     self.user_infos[user_id][2].append(info) # During the event start
         except Exception as e:
             logging.debug("could not classify tweet error: {}".format(e))
     
+    # create information of number of tweets before, after, and during the disaster period for each user
+    # save all information to csv file ex. "319_user_stats.csv"
     def getPeriodStats(self):
+        # create an empty panda data frame
         cache = pd.DataFrame(columns=('user', 'num_before', "num_after", 'num_during'))
         for user_info in self.user_infos:
             len_before = len(self.user_infos[user_info][0])
             len_after = len(self.user_infos[user_info][1])
             len_during = len(self.user_infos[user_info][2])
-            #save information to CSV file
+            # append cache with the user period stats
             cache.loc[len(cache)] = [user_info, len_before, len_after, len_during]
-            #logging.debug(cache)
-            logging.debug("stats number of tweets of a user: {} before: {} after: {} during {}".
-                      format(user_info, len_before, len_after, len_during))
+            #logging.debug("stats number of tweets of a user: {} before: {} after: {} during {}".
+            #          format(user_info, len_before, len_after, len_during))
 
+        #save information to CSV file
         cache.to_csv("{}_user_stats.csv".format(self.ev_id), mode = 'w', index=False)
         logging.debug("total users: {}".format(len(self.user_infos)))
         return (len_before, len_after, len_during)   
@@ -113,8 +117,11 @@ if __name__ == '__main__':
     path2 = "../Event - 319 - Moore Tornado/user_timelines/"
     paths = [path1, path2]
     classifier = TwitterPeriodClf()
+    # parse all database files in the target folder
     files = classifier.get_files(paths)
     logging.debug(files)
+    # read tweets from file and classify their time periods
     classifier.process_data(files, 319)
+    # print users time classifications and save it to file
     classifier.getPeriodStats()
     
