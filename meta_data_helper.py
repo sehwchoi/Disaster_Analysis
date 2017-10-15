@@ -146,7 +146,7 @@ class UTCUpdater(object):
         return zone
 
 
-class TimezoneConverter(object):
+class EventMetaDataHelper(object):
     
     def __init__(self, file_name):
         self.event_utc_dic = {}
@@ -213,9 +213,12 @@ class TimezoneConverter(object):
         #logging.debug("UTC Time - " + str(utc_time))
         logging.debug("Local Time - " + str(local_time))
         return local_time
-    
+
+    def get_all_events(self):
+        return self.event_times.keys()
+
     # return a tuple of (event begin time, event end time)
-    def getEventTimes(self, event_id):
+    def get_event_times(self, event_id):
         logging.debug("Time for id:{} begin:{} end:{}".format(event_id,
                         str(self.event_times[event_id][0]), str(self.event_times[event_id][1])))
         return self.event_times[event_id]
@@ -236,6 +239,6 @@ if __name__ == "__main__":
     logging.debug(state_census)
     
     updater = UTCUpdater("incident_metadata.csv")
-    #TimeConverter = TimezoneConverter("incident_metadata.csv")
+    #TimeConverter = EventMetaData("incident_metadata.csv")
     #print(TimeConverter.convert_utc_to_loctime("Wed Aug 27 15:08:45 +0000 2008", "UTC-8"))
     #print(TimeConverter.convert_to_loctime_from_event("Wed Aug 27 15:08:45 +0000 2008", 119)) # event 119, time zone CST, UTC-6
