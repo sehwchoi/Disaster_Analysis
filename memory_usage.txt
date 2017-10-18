@@ -1,11 +1,29 @@
 Memory Usage on the version that is user centered dictionary
 
+number_of_users*(y) + number_of_tweets*(z) + constant overhead = X MB
+number_of_users*(0.00414) + number_of_tweets*(0.00000885) + 70 MB = X MB
+
+
+1-1. Memory usage right after staring the program but before creating twitter_period_clf object
+
+psutil pysical memory 60.4375 MB
+psutil pysical memory percent 1.47552490234375 %
+psutil virtual memory 2433.41015625 MB
+psutil virtual memory percent 59.409427642822266 %
+psutil system mem: total=4096.0 MB used=2732.421875 MB available=907.26953125 MB
+
+
+
+1-2. Memory usage with 2607, users 8139 tweeters
+
 DEBUG:root:event: 319 total users: 2607 total tweets: 8139             total duplication : 0 file: ../user_stats/319_user_stats.csv
 psutil pysical memory 80.9921875 MB
 psutil pysical memory percent 1.9773483276367188 %
 psutil virtual memory 2448.78515625 MB
 psutil virtual memory percent 59.784793853759766 %
 
+
+1-3. Memory usage with 10565, users 92129 tweeters
 
 DEBUG:root:event: 319 total users: 10565 total tweets: 92129             total duplication : 0 file: ../user_stats/319_user_stats.csv
 psutil pysical memory 114.83203125 MB
@@ -14,6 +32,8 @@ psutil virtual memory 2464.015625 MB
 psutil virtual memory percent 60.15663146972656 %
 psutil system mem: total_pysmem=4096.0 MB used=2534.8515625 MB available=888.13671875 MB
 
+
+1-4. Memory usage with 10583 users, 1222744 tweeters
 
 DEBUG:root:event: 319 total users: 10583 total tweets: 1222744             total duplication : 17958 file: ../user_stats/319_user_stats.csv
 psutil pysical memory 125.0625 MB
@@ -36,3 +56,75 @@ psutil system mem: total_pysmem=4096.0 MB used=2267.16796875 MB available=786.20
                          function (store_info) |           1 |    136     B
     <class 'pympler.classtracker.TrackedObject |           1 |    120     B
   <class 'pympler.process._ProcessMemoryInfoPS |           2 |    112     B
+
+
+
+
+
+
+Memory Usage on the version that periods centered sorted list
+
+
+
+2-1. Memory usage right after staring the program but before creating twitter_period_clf object
+
+psutil pysical memory 60.90234375 MB
+psutil pysical memory percent 1.486968994140625 %
+psutil virtual memory 2433.66015625 MB
+psutil virtual memory percent 59.415531158447266 %
+psutil system mem: total_pysmem=4096.0 MB used=2708.41796875 MB available=997.94140625 MB
+
+
+2-2.
+DEBUG:root:event: 319 total users: 5227 total tweets: 31326             total duplication : 4899 file: ../user_stats/319_user_stats.csv
+psutil pysical memory 106.26953125 MB
+psutil pysical memory percent 2.594470977783203 %
+psutil virtual memory 2454.2734375 MB
+psutil virtual memory percent 59.918785095214844 %
+psutil system mem: total_pysmem=4096.0 MB used=2684.359375 MB available=990.06640625 MB
+                                           types |   # objects |   total size
+================================================ | =========== | ============
+                                    <class 'list |        8854 |      1.03 MB
+                                     <class 'int |       28452 |    881.27 KB
+                                     <class 'str |        8734 |    623.51 KB
+                                    <class 'type |           0 |      3.81 KB
+                                    <class 'dict |          13 |      2.78 KB
+                <class 'pympler.asizeof._Typedef |          22 |      2.06 KB
+                <class 'urllib.parse.SplitResult |          11 |    968     B
+                <class 'pympler.asizeof._Claskey |           9 |    504     B
+                 <class 'collections.defaultdict |           2 |    496     B
+  <class 'sortedcontainers.sortedlist.SortedList |           3 |    168     B
+                                 <class 'weakref |           2 |    160     B
+                           function (store_info) |           1 |    136     B
+                             <class 'abc.ABCMeta |           0 |    128     B
+      <class 'pympler.classtracker.TrackedObject |           1 |    120     B
+
+
+
+2-3. Memory usage with 10583 users, 1222744 tweeters
+
+DEBUG:root:event: 319 total users: 10583 total tweets: 1222744             total duplication : 17959 file: ../user_stats/319_user_stats.csv
+psutil pysical memory 149.46875 MB
+psutil pysical memory percent 3.6492347717285156 %
+psutil virtual memory 2512.65625 MB
+psutil virtual memory percent 61.344146728515625 %
+psutil system mem: total_pysmem=4096.0 MB used=2574.57421875 MB available=875.375 MB
+                                           types |   # objects |   total size
+================================================ | =========== | ============
+                                     <class 'int |     1205742 |     36.78 MB
+                                    <class 'list |        9681 |     10.67 MB
+                                     <class 'str |        8753 |    626.24 KB
+                                    <class 'type |           0 |      3.81 KB
+                                    <class 'dict |          13 |      3.03 KB
+                <class 'pympler.asizeof._Typedef |          22 |      2.06 KB
+                <class 'urllib.parse.SplitResult |          10 |    880     B
+                <class 'pympler.asizeof._Claskey |           9 |    504     B
+                 <class 'collections.defaultdict |           2 |    496     B
+  <class 'sortedcontainers.sortedlist.SortedList |           3 |    168     B
+                                 <class 'weakref |           2 |    160     B
+                           function (store_info) |           1 |    136     B
+                             <class 'abc.ABCMeta |           0 |    128     B
+      <class 'pympler.classtracker.TrackedObject |           1 |    120     B
+                  <class 'pympler.asizeof.Asized |           2 |    112     B
+
+

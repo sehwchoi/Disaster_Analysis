@@ -10,6 +10,7 @@ import json
 import os
 import re
 import smart_open
+from sortedcontainers import SortedList
 import resource
 import psutil
 from pympler import web
@@ -28,10 +29,12 @@ class TwitterPeriodClf(object):
         Attributes:
             self.total_duplication (int) :
             self.total_tweets (int) :
-            self.user_infos (dict) : Ex) user_infos = { user1 : [before_tweet1, before_tweet2....],
-                                                                [after_tweet1, after_tweet2....],
-                                                                [during_tweet1, during_tweet2....]
+            self.user_infos (dict) : Ex) user_infos = { user1 : [before_count, after_count, during_count],
                                                         user2 : ... }
+            self.before (sortedlist) : Ex) self_before = [tweet_id1, tweet_id2...]
+            self.after (sortedlistlist) :
+            self.during (sortedlistlist):
+
             self.event_helper (EventMetaDataHelper class) :
             self.events (list) : Ex) [1, 2, 3....]
             self.files_dict (dict) : Ex) { event1 : [file1, file2, file3], event2: [file1, file2, file3]}
@@ -51,6 +54,10 @@ class TwitterPeriodClf(object):
         # TODO save to pd dataframe, get from csv file
         self.user_infos = defaultdict(list)
 
+        self.before_tweets = SortedList()
+        self.after_tweets = SortedList()
+        self.during_tweets = SortedList()
+
         # initialize timezone converter
         self.event_helper = EventMetaDataHelper(incident_metadata_path)
         self.events = self.event_helper.get_all_events()
@@ -68,9 +75,36 @@ class TwitterPeriodClf(object):
         self.total_tweets = 0
         self.user_infos = defaultdict(list)
 
-    def __is_duplication(self, cand_tweet_id, tweet_ids):
+    def __search(self, tw_list, target):
+        first = 0
+        last = len(tw_list) - 1
+        found = False
+
+        while first <= last and not found:
+            mid = int((first+last) / 2)
+            #logging.debug("search first {} last {} mid {} target {}".format(first, last, mid, target))
+            if tw_list[mid] == target:
+                logging.debug("this tweet {} is duplication".format(target))
+                found = True
+            else:
+                if target < tw_list[mid]:
+                    last = mid - 1
+                else:
+                    first = mid + 1
+
+        return found
+
+
+    def __is_duplication(self, cand_tweet_id, period):
         """ check if this tweet is already classified and counted """
-        if cand_tweet_id in tweet_ids:
+        if period is 'before':
+            tw_list = self.before_tweets
+        elif period is 'after':
+            tw_list = self.after_tweets
+        elif period is 'during':
+            tw_list = self.during_tweets
+
+        if self.__search(tw_list, cand_tweet_id):
             logging.debug("this tweet {} is duplication".format(cand_tweet_id))
             self.total_duplication += 1
             return True
@@ -142,23 +176,27 @@ class TwitterPeriodClf(object):
             tweet_date_local = self.event_helper.convert_to_loctime_from_event(tweet_date_utc, event)
             # logging.debug("Could not convert time ev_id: {} time: {}".format(self.evid, tweet_date_utc))
 
-            # if user id not exist append three lists(Before, During, After) as periods
+            # if user id not exist append 0s for before, after, during tweet counts
             if user_id not in self.user_infos:
                 for i in range(0, 3):
-                    self.user_infos[user_id].append([])
+                    self.user_infos[user_id].append(0)
 
             if tweet_date_local < ev_begin:
                 # logging.debug("added to before list")
-                if not self.__is_duplication(tweet['id'], self.user_infos[user_id][0]):
-                    self.user_infos[user_id][0].append(tweet['id'])  # Before the event start
+                if not self.__is_duplication(int(tweet['id']), 'before'):
+                    self.before_tweets.add(int(tweet['id']))
+                    #logging.debug(self.before_tweets[:10])
+                    self.user_infos[user_id][0] += 1  # Before the event start
             elif tweet_date_local > ev_end:
                 # logging.debug("added to after list")
-                if not self.__is_duplication(tweet['id'], self.user_infos[user_id][1]):
-                    self.user_infos[user_id][1].append(tweet['id'])  # After the event start
+                if not self.__is_duplication(int(tweet['id']), 'after'):
+                    self.after_tweets.add(int(tweet['id']))
+                    self.user_infos[user_id][1] += 1  # After the event start
             else:
                 # logging.debug("added to during list")
-                if not self.__is_duplication(tweet['id'], self.user_infos[user_id][2]):
-                    self.user_infos[user_id][2].append(tweet['id'])  # During the event start
+                if not self.__is_duplication(int(tweet['id']), 'during'):
+                    self.during_tweets.add(int(tweet['id']))
+                    self.user_infos[user_id][2] += 1  # During the event start
         except Exception as e:
             logging.debug("could not classify tweet error: {}".format(e))
 
@@ -171,13 +209,13 @@ class TwitterPeriodClf(object):
         # create an empty panda data frame
         cache = pd.DataFrame(columns=('user', 'num_before', "num_after", 'num_during'))
         for user_info in self.user_infos:
-            len_before = len(self.user_infos[user_info][0])
-            len_after = len(self.user_infos[user_info][1])
-            len_during = len(self.user_infos[user_info][2])
+            len_before = self.user_infos[user_info][0]
+            len_after = self.user_infos[user_info][1]
+            len_during = self.user_infos[user_info][2]
             # append cache with the user period stats
             cache.loc[len(cache)] = [user_info, len_before, len_after, len_during]
             # logging.debug("stats number of tweets of a user: {} before: {} after: {} during {}".
-            #          format(user_info, len_before, len_after, len_during))
+            #              format(user_info, len_before, len_after, len_during))
 
         # save information to CSV file
         output = os.path.join(self.output_path, r"{}_user_stats.csv".format(event))
