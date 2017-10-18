@@ -3,14 +3,22 @@ Created on Oct 5, 2017
 
 @author: stellachoi
 '''
+
 import pandas as pd
 import logging, sys
 import json
 import os
 import re
+import smart_open
+import resource
+import psutil
+from pympler import web
+from pympler import tracker
+from pympler.classtracker import ClassTracker
 
 from collections import defaultdict
 from meta_data_helper import EventMetaDataHelper
+
 
 # TODO some unittest to test this code
 
@@ -35,7 +43,7 @@ class TwitterPeriodClf(object):
     geotag_folder = "geotagged_from_archive"
     timeline_folder = "user_timelines"
 
-    def __init__(self, input_path, output_path):
+    def __init__(self, input_paths, output_path, incident_metadata_path):
 
         # TODO not using event info as class attribute
         self.total_duplication = 0
@@ -44,7 +52,7 @@ class TwitterPeriodClf(object):
         self.user_infos = defaultdict(list)
 
         # initialize timezone converter
-        self.event_helper = EventMetaDataHelper("incident_metadata.csv")
+        self.event_helper = EventMetaDataHelper(incident_metadata_path)
         self.events = self.event_helper.get_all_events()
         logging.debug(self.events)
 
@@ -52,7 +60,7 @@ class TwitterPeriodClf(object):
         self.geotaged_exist = []
         self.timeline_exist = []
         self.output_path = output_path
-        self.__get_files(input_path)
+        self.__get_files(input_paths)
 
     def __reset_event_data(self):
         """ reset event specific parameter """
@@ -60,36 +68,43 @@ class TwitterPeriodClf(object):
         self.total_tweets = 0
         self.user_infos = defaultdict(list)
 
-    def __is_duplication(self, cand_tweet_id, infos):
+    def __is_duplication(self, cand_tweet_id, tweet_ids):
         """ check if this tweet is already classified and counted """
-        for info in infos:
-            if cand_tweet_id == info['t_id']:
-                logging.debug("this tweet {} is duplication with info {}".format(cand_tweet_id, info))
-                self.total_duplication += 1
-                return True
-    
+        if cand_tweet_id in tweet_ids:
+            logging.debug("this tweet {} is duplication".format(cand_tweet_id))
+            self.total_duplication += 1
+            return True
+
         return False
 
-    def __get_files(self, folder):
+    def __get_files(self, folders):
         """ parse all tweets files all events from the given folder"""
         # { event1: [files], event2: [files }
-
-        for root, dirs, files in os.walk(folder):
-            for file in files:
-                # gets the number that file name starts with
-                file_match= re.search('(\d+)_', file)
-                if file_match:
-                    file_start = int(file_match.group(1))
-                    logging.debug("this file starts with {}".format(file_start))
-                    # check if this number is one of the event ids
-                    if file_start in self.events:
-                        if TwitterPeriodClf.geotag_folder in root:
-                            if file_start not in self.geotaged_exist:
-                                self.geotaged_exist.append(file_start)
-                        elif TwitterPeriodClf.timeline_folder in root:
-                            if file_start not in self.timeline_exist:
-                                self.timeline_exist.append(file_start)
-                        self.files_dict[file_start].append(os.path.join(root, file))
+        for folder in folders:
+            logging.debug("searching folder: {}".format(folder))
+            for root, dirs, files in os.walk(folder):
+                for filename in files:
+                    # logging.debug("file: {}".format(filename))
+                    # gets the number that file name starts with
+                    file_match = re.search('(\d+)_', filename)
+                    if file_match:
+                        file_start = int(file_match.group(1))
+                        # logging.debug("this file starts with {}".format(file_start))
+                        # check if this number is one of the event ids
+                        if file_start in self.events:
+                            # logging.debug("file in events")
+                            if self.geotag_folder in folder:
+                                # logging.debug("this is a geotag data file")
+                                if file_start not in self.geotaged_exist:
+                                    # logging.debug("adding event to geotagged: {}".format(file_start))
+                                    self.geotaged_exist.append(file_start)
+                            elif self.timeline_folder in folder:
+                                # logging.debug("this is a timeline file")
+                                if file_start not in self.timeline_exist:
+                                    # logging.debug("adding event to timeline: {}".format(file_start))
+                                    self.timeline_exist.append(file_start)
+                            # logging.debug("adding file to event {}".format(filename))
+                            self.files_dict[file_start].append(os.path.join(root, filename))
 
     def calculate_user_periods(self):
         """ read tweets from files and classify them as it reads"""
@@ -98,55 +113,55 @@ class TwitterPeriodClf(object):
             ev_end = self.event_helper.get_event_times(event)[1]
 
             # classify user tweets only if files exist in both geotagged and timeline
+            output = os.path.join(self.output_path, r"{}_user_stats.csv".format(event))
+            # logging.debug("output file:{}".format(output))
+            #if event in self.geotaged_exist and event in self.timeline_exist and not os.path.isfile(output):
             if event in self.geotaged_exist and event in self.timeline_exist:
                 file_names = self.files_dict[event]
                 for file_name in file_names:
                     logging.debug("start reading file {}".format(file_name))
-                    with open(file_name, 'r') as file:
-                        for line in file:
-                            # do not add duplicated tweet by tweet unique id
-                            tweet = json.loads(line)
-                            self.__classify(tweet, event, ev_begin, ev_end)
-                            self.total_tweets += 1
+                    with smart_open.smart_open(file_name, 'r') as f:
+                        for line in f:
+                            try:
+                                # do not add duplicated tweet by tweet unique id
+                                tweet = json.loads(line)
+                                self.__classify(tweet, event, ev_begin, ev_end)
+                                self.total_tweets += 1
+                            except:
+                                pass
                 self.__save_period_stats(event)
 
             self.__reset_event_data()
-            logging.debug(self.user_infos)
 
     def __classify(self, tweet, event, ev_begin, ev_end):
         """ classify tweet according their local time"""
         try:
             user_id = tweet['user']['id']
             tweet_date_utc = tweet['created_at']
-            #logging.debug("utc tweet date {}".format(tweet_date_utc))
+            # logging.debug("utc tweet date {}".format(tweet_date_utc))
             tweet_date_local = self.event_helper.convert_to_loctime_from_event(tweet_date_utc, event)
-            #logging.debug("Could not convert time ev_id: {} time: {}".format(self.evid, tweet_date_utc))
-            
+            # logging.debug("Could not convert time ev_id: {} time: {}".format(self.evid, tweet_date_utc))
+
             # if user id not exist append three lists(Before, During, After) as periods
             if user_id not in self.user_infos:
                 for i in range(0, 3):
                     self.user_infos[user_id].append([])
 
-            info = {
-                't_id' : tweet['id'],
-                'time' : tweet_date_utc }
-            
-            # logging.debug("tweet info {}" + str(info))
             if tweet_date_local < ev_begin:
                 # logging.debug("added to before list")
-                if not self.__is_duplication(info['t_id'],  self.user_infos[user_id][0]):
-                    self.user_infos[user_id][0].append(info) # Before the event start
+                if not self.__is_duplication(tweet['id'], self.user_infos[user_id][0]):
+                    self.user_infos[user_id][0].append(tweet['id'])  # Before the event start
             elif tweet_date_local > ev_end:
                 # logging.debug("added to after list")
-                if not self.__is_duplication(info['t_id'],  self.user_infos[user_id][1]):
-                    self.user_infos[user_id][1].append(info) # After the event start
+                if not self.__is_duplication(tweet['id'], self.user_infos[user_id][1]):
+                    self.user_infos[user_id][1].append(tweet['id'])  # After the event start
             else:
                 # logging.debug("added to during list")
-                if not self.__is_duplication(info['t_id'],  self.user_infos[user_id][2]):
-                    self.user_infos[user_id][2].append(info) # During the event start
+                if not self.__is_duplication(tweet['id'], self.user_infos[user_id][2]):
+                    self.user_infos[user_id][2].append(tweet['id'])  # During the event start
         except Exception as e:
             logging.debug("could not classify tweet error: {}".format(e))
-    
+
     # create information of number of tweets before, after, and during the disaster period for each user
     # save all information to csv file ex. "319_user_stats.csv"
     def __save_period_stats(self, event):
@@ -161,22 +176,65 @@ class TwitterPeriodClf(object):
             len_during = len(self.user_infos[user_info][2])
             # append cache with the user period stats
             cache.loc[len(cache)] = [user_info, len_before, len_after, len_during]
-            #logging.debug("stats number of tweets of a user: {} before: {} after: {} during {}".
+            # logging.debug("stats number of tweets of a user: {} before: {} after: {} during {}".
             #          format(user_info, len_before, len_after, len_during))
 
-        #save information to CSV file
+        # save information to CSV file
         output = os.path.join(self.output_path, r"{}_user_stats.csv".format(event))
-        cache.to_csv(output, mode = 'w', index=False)
+        cache.to_csv(output, mode='w', index=False)
         # duplication_rate = str(int((self.total_duplication/self.total_tweets) * 100)) + '%'
         logging.debug("event: {} total users: {} total tweets: {} \
             total duplication : {} file: {}".format(event, len(self.user_infos), self.total_tweets,
                                                     self.total_duplication, output))
 
-if __name__ == '__main__':
-    logging.basicConfig(stream = sys.stderr, level = logging.DEBUG)
-    input_path = "../Event - 319 - Moore Tornado"
-    output_path = "../user_stats"
+def print_memory_usage():
+    # print memory using psutil library
+    process = psutil.Process(os.getpid())
 
-    classifier = TwitterPeriodClf(input_path, output_path)
+    # prints pysical memory information
+    mem = process.memory_info()[0] / float(2 ** 20)
+    # Compare process memory to total physical system memory and calculate process memory utilization as a percentage.
+    # memtype argument is a string that dictates what type of process memory you want to compare against.
+    mem_percent = process.memory_percent(memtype='rss')
+    print("psutil pysical memory {} MB".format(mem))
+    print("psutil pysical memory percent {} %".format(mem_percent))
+
+    # prints virtual memory information
+    mem = process.memory_info()[1] / float(2 ** 20)
+    mem_percent = process.memory_percent(memtype='vms')
+    print("psutil virtual memory {} MB".format(mem))
+    print("psutil virtual memory percent {} %".format(mem_percent))
+
+    mem = psutil.virtual_memory()
+    print("psutil system mem: total_pysmem={} MB used={} MB available={} MB".format(mem.total / (float(2 ** 20)),
+                                                            mem.used / (float(2 ** 20)),
+                                                            mem.available / (float(2 ** 20))))
+
+if __name__ == '__main__':
+    logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+    input_paths = ["../Event - 319 - Moore Tornado copy/geotagged_from_archive/",
+                   "../Event - 319 - Moore Tornado copy/user_timelines/"]
+    output_path = "../user_stats"
+    incident_metadata_path = 'incident_metadata.csv'
+
+    class_tracker = ClassTracker()
+    memory_tracker = tracker.SummaryTracker()
+    class_tracker.create_snapshot()
+
+    # print memory usage using psutil
+    print_memory_usage()
+
+    classifier = TwitterPeriodClf(input_paths, output_path,incident_metadata_path)
+    class_tracker.track_object(classifier)
+
     # read tweets from file and classify their time periods
     classifier.calculate_user_periods()
+
+    # print memory usage using psutil
+    print_memory_usage()
+
+    # print using pympler
+    class_tracker.create_snapshot()
+    memory_tracker.print_diff()
+    web.start_profiler(debug=True, stats=class_tracker.stats)
+

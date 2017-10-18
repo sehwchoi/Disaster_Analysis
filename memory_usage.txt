@@ -1,0 +1,38 @@
+Memory Usage on the version that is user centered dictionary
+
+DEBUG:root:event: 319 total users: 2607 total tweets: 8139             total duplication : 0 file: ../user_stats/319_user_stats.csv
+psutil pysical memory 80.9921875 MB
+psutil pysical memory percent 1.9773483276367188 %
+psutil virtual memory 2448.78515625 MB
+psutil virtual memory percent 59.784793853759766 %
+
+
+DEBUG:root:event: 319 total users: 10565 total tweets: 92129             total duplication : 0 file: ../user_stats/319_user_stats.csv
+psutil pysical memory 114.83203125 MB
+psutil pysical memory percent 2.803516387939453 %
+psutil virtual memory 2464.015625 MB
+psutil virtual memory percent 60.15663146972656 %
+psutil system mem: total_pysmem=4096.0 MB used=2534.8515625 MB available=888.13671875 MB
+
+
+DEBUG:root:event: 319 total users: 10583 total tweets: 1222744             total duplication : 17958 file: ../user_stats/319_user_stats.csv
+psutil pysical memory 125.0625 MB
+psutil pysical memory percent 3.0533790588378906 %
+psutil virtual memory 2486.0703125 MB
+psutil virtual memory percent 60.69507598876953 %
+psutil system mem: total_pysmem=4096.0 MB used=2267.16796875 MB available=786.20703125 MB
+                                         types |   # objects |   total size
+============================================== | =========== | ============
+                                  <class 'list |        8798 |    824.38 KB
+                                   <class 'str |        8743 |    625.64 KB
+                                   <class 'int |        1953 |     53.46 KB
+                                  <class 'type |           0 |      3.54 KB
+                                  <class 'dict |          10 |      2.50 KB
+              <class 'pympler.asizeof._Typedef |          20 |      1.88 KB
+              <class 'urllib.parse.SplitResult |          10 |    880     B
+              <class 'pympler.asizeof._Claskey |           9 |    504     B
+               <class 'collections.defaultdict |           2 |    496     B
+                               <class 'weakref |           2 |    160     B
+                         function (store_info) |           1 |    136     B
+    <class 'pympler.classtracker.TrackedObject |           1 |    120     B
+  <class 'pympler.process._ProcessMemoryInfoPS |           2 |    112     B
