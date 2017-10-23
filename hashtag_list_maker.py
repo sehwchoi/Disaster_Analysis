@@ -8,9 +8,9 @@ from bs4 import BeautifulSoup
 
 
 class ListMaker(object):
-    def __init__(self):
-        self.db_manager = HashtagDBManager()
-
+    def __init__(self, hashtag_db_info):
+        # create DB manager and pass db file location and table name
+        self.db_manager = HashtagDBManager(hashtag_db_info[0], hashtag_db_info[1])
 
     def top_hashtag1(self, file_name, output_name):
         pattern = re.compile(r"#(.+?)<")
@@ -83,15 +83,16 @@ class ListMaker(object):
                                         logging.debug('add hashtag to db {}'.format(hashtag))
                                         self.db_manager.insert_hashtag(hashtag)
                         except Exception as e:
-                            logging.debug("rated files reading error : {}".format(e))
+                            logging.error("rated file : {} reading error : {}".format(file, e))
         self.db_manager.disconnect()
 
+"""TODO: saves to a separate file"""
 
 class HashtagDBManager(object):
-    db_name = 'irrelevant_hashtag.db'
-    table_name = 'list'
 
-    def __init__(self):
+    def __init__(self, db_name, table_name):
+        self.db_name = db_name
+        self.table_name = table_name
         self.conn = None
         self.c = None
         self.connect()
@@ -134,8 +135,11 @@ class HashtagDBManager(object):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
-    list_maker = ListMaker()
+    logging.basicConfig(stream=sys.stderr, level=logging.ERROR)
+    db_name = 'irrelevant_hashtag.db'
+    table_name = 'list'
+    zero_hashtag_db_info = [db_name, table_name]
+    list_maker = ListMaker(zero_hashtag_db_info)
     # creates a csv file with a list of top instagram hashtags
     # instgram hashtag data is from https://top-hashtags.com/instagram/101/
     #list_maker.top_hashtag1('top_hashtag_raw.txt', 'top_hashtag.txt')
