@@ -63,7 +63,10 @@ class ListMaker(object):
     def parse_irrelevant_from_rated_files(self, rated_path):
         #irrelevant_hashtags = []
         disaster_related_terms = self.__lexicon_list_builder()
-
+        logging.debug("lexicon terms len: {}".format(len(disaster_related_terms)))
+        total_len = 0
+        total_zero_len = 0
+        total_lexicon_match = 0;
         for root, dirs, files in os.walk(rated_path):
             for file in files:
                 file_match = re.search('(\d+)_', file)
@@ -74,16 +77,24 @@ class ListMaker(object):
                             rated_pd = pd.read_csv(file)
                             # logging.debug(rated_pd)
                             # iterate states and find corresponding zones
+                            total_len += len(rated_pd.index)
                             for index, row in rated_pd.iterrows():
-                                rate = row[2]
-                                # logging.debug(rate)
-                                if rate is 0:
-                                    hashtag = row[0]
+                                rate = row['Relevance']
+                                logging.debug("{} {} {}".format(row[0], row[1], row[2]))
+                                if int(rate) is 0:
+                                    total_zero_len += 1
+                                    hashtag = row['Hashtag']
                                     if hashtag not in disaster_related_terms:
-                                        logging.debug('add hashtag to db {}'.format(hashtag))
+                                        # logging.debug('add hashtag to db {}'.format(hashtag))
                                         self.db_manager.insert_hashtag(hashtag)
+                                    else:
+                                        total_lexicon_match += 1
+                                        logging.debug("term: {} is in lexicon list".format(hashtag))
                         except Exception as e:
                             logging.error("rated file : {} reading error : {}".format(file, e))
+        logging.debug("Total hashtags: {}".format(total_len))
+        logging.debug("Total zero hashtags: {}".format(total_zero_len))
+        logging.debug("Total lexicon match: {}".format(total_lexicon_match))
         self.db_manager.disconnect()
 
 """TODO: saves to a separate file"""
@@ -97,7 +108,7 @@ class HashtagDBManager(object):
         self.c = None
         self.connect()
         sql = 'CREATE TABLE IF NOT EXISTS ' + self.table_name + ' (' \
-                                                                'id integer primary key autoincrement,' \
+                                                                'id integer PRIMARY KEY,' \
                                                                 'hashtag text,' \
                                                                 'UNIQUE(hashtag))'
         self.c.execute(sql)
@@ -107,14 +118,17 @@ class HashtagDBManager(object):
         sql = "INSERT OR IGNORE INTO " + self.table_name + "(hashtag) VALUES(?)"
         try:
             self.c.execute(sql, (hashtag,))
+            logging.debug("insert id: {}".format(self.c.lastrowid))
         except sqlite3.OperationalError as msg:
             logging.debug("insert error {}".format(msg))
         self.conn.commit()
 
     def check_exist(self, hashtag):
         sql = "SELECT EXISTS(SELECT 1 FROM " + self.table_name + " WHERE hashtag=? Limit 1)"
-        result = self.c.execute(sql, (hashtag,))
-        return result
+        self.c.execute(sql, (hashtag,))
+        exist, = self.c.fetchone()
+        # logging.debug("check exist {}".format(exist))
+        return exist
 
     def show_table(self):
         sql = "SELECT * FROM " + self.table_name
@@ -135,7 +149,7 @@ class HashtagDBManager(object):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(stream=sys.stderr, level=logging.ERROR)
+    logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
     db_name = 'irrelevant_hashtag.db'
     table_name = 'list'
     zero_hashtag_db_info = [db_name, table_name]

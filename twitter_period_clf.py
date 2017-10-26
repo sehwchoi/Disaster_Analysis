@@ -19,6 +19,9 @@ from pympler.asizeof import asizeof
 
 from collections import defaultdict
 from meta_data_helper import EventMetaDataHelper
+import time
+
+# start_time = time.time()
 
 
 def print_simple_memory_usage():
@@ -187,10 +190,12 @@ class TwitterPeriodClf(object):
             logging.debug("Event : {} processed".format(event))
             print_memory_usage()
             logging.debug("size: {} bytes".format(asizeof(self)))
+            logging.debug("tweets_counts_by_date size: {} bytes".format(asizeof(self.tweets_counts_by_date)))
             self.class_tracker.create_snapshot()
 
             self.__reset_event_data()
             logging.debug("after reset size: {} bytes".format(asizeof(self)))
+            logging.debug("tweets_counts_by_date size: {} bytes".format(asizeof(self.tweets_counts_by_date)))
 
     def __read_tweets(self, file_name, file_type, event, ev_begin, ev_end):
         with smart_open.smart_open(file_name, 'r') as f:
@@ -207,7 +212,7 @@ class TwitterPeriodClf(object):
     def __classify(self, tweet, event, ev_begin, ev_end, file_type):
         """ classify tweet according their local time"""
         try:
-            user_id = tweet['user']['id']
+            user_id = int(tweet['user']['id'])
             tweet_date_utc = tweet['created_at']
             # logging.debug("utc tweet date {}".format(tweet_date_utc))
             tweet_date_local = self.event_helper.convert_to_loctime_from_event(tweet_date_utc, event)

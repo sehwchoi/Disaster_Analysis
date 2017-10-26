@@ -33,7 +33,7 @@ class HashtagAutoFltr(object):
                             for row in df.iloc[:,0]:
                                 # logging.debug("hashtag : {}".format(row))
                                 num_total_hashtags += 1
-                                if row in self.common_hashtags and self.db_manager.check_exist(row):
+                                if (row in self.common_hashtags) or (self.db_manager.check_exist(row)):
                                     num_common_hashtags += 1
                                     ratings.append(-1)
                                 else:
