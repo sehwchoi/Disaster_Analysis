@@ -82,14 +82,14 @@ class ListMaker(object):
                                 rate = row['Relevance']
                                 logging.debug("{} {} {}".format(row[0], row[1], row[2]))
                                 if int(rate) is 0:
-                                    total_zero_len += 1
                                     hashtag = row['Hashtag']
+                                    total_zero_len += 1
                                     if hashtag not in disaster_related_terms:
                                         # logging.debug('add hashtag to db {}'.format(hashtag))
                                         self.db_manager.insert_hashtag(hashtag)
                                     else:
                                         total_lexicon_match += 1
-                                        logging.debug("term: {} is in lexicon list".format(hashtag))
+                                        # logging.debug("term: {} is in lexicon list".format(hashtag))
                         except Exception as e:
                             logging.error("rated file : {} reading error : {}".format(file, e))
         logging.debug("Total hashtags: {}".format(total_len))
