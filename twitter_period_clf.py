@@ -14,6 +14,7 @@ import resource
 import psutil
 from pympler import web
 from pympler import tracker
+import datetime
 from pympler.classtracker import ClassTracker
 from pympler.asizeof import asizeof
 
@@ -216,24 +217,18 @@ class TwitterPeriodClf(object):
             tweet_date_utc = tweet['created_at']
             # logging.debug("utc tweet date {}".format(tweet_date_utc))
             tweet_date_local = self.event_helper.convert_to_loctime_from_event(tweet_date_utc, event)
-            tweet_date_local_str = str(tweet_date_local)
-            if tweet_date_local_str in self.tweets_counts_by_date:
-                info = self.tweets_counts_by_date[tweet_date_local_str]
-                if user_id in info:
-                    self.tweets_counts_by_date[tweet_date_local_str][user_id] += 1
-                else:
-                    self.tweets_counts_by_date[tweet_date_local_str][user_id] = 1
-            else:
-                user_info = {user_id: 1}
-                self.tweets_counts_by_date[tweet_date_local_str] = user_info
+            tweet_date_local_str = str(tweet_date_local.date())
+            # logging.debug("tweet date: {}".format(tweet_date_local_str))
 
+            duplicate = False
             if tweet_date_local < ev_begin:
                 # logging.debug("added to before list")
                 if not self.__is_duplication(int(tweet['id']), 'before'):
                     if file_type is "geotag":
                         self.before_tweets.append(int(tweet['id']))
-                        logging.debug("added tweet before list id : {}".format(tweet['id']))
+                        # logging.debug("added tweet before list id : {}".format(tweet['id']))
                 else:
+                    duplicate = True
                     if file_type is "timeline":
                         self.total_timeline_duplication += 1
             elif tweet_date_local > ev_end:
@@ -242,6 +237,7 @@ class TwitterPeriodClf(object):
                     if file_type is "geotag":
                         self.after_tweets.append(int(tweet['id']))
                 else:
+                    duplicate = True
                     if file_type is "timeline":
                         self.total_timeline_duplication += 1
             else:
@@ -250,10 +246,24 @@ class TwitterPeriodClf(object):
                     if file_type is "geotag":
                         self.during_tweets.append(int(tweet['id']))
                 else:
+                    duplicate = True
                     if file_type is "timeline":
                         self.total_timeline_duplication += 1
+
+            if not duplicate:
+                if tweet_date_local_str in self.tweets_counts_by_date:
+                    info = self.tweets_counts_by_date[tweet_date_local_str]
+                    if user_id in info:
+                        self.tweets_counts_by_date[tweet_date_local_str][user_id] += 1
+                    else:
+                        self.tweets_counts_by_date[tweet_date_local_str][user_id] = 1
+                else:
+                    user_info = {user_id: 1}
+                    self.tweets_counts_by_date[tweet_date_local_str] = user_info
+
         except Exception as e:
             logging.debug("could not classify tweet error: {}".format(e))
+
 
     # create information of number of tweets before, after, and during the disaster period for each user
     # save all information to csv file ex. "319_user_stats.csv"
