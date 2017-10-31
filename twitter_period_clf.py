@@ -92,6 +92,7 @@ class TwitterPeriodClf(object):
         # TODO not using event info as class attribute
         self.total_timeline_duplication = 0
         self.total_tweets = 0
+        self.total_users = 0
         # TODO save to pd dataframe, get from csv file
         self.tweets_counts_by_date = {}
 
@@ -104,13 +105,14 @@ class TwitterPeriodClf(object):
         self.events = self.event_helper.get_all_events()
         logging.debug(self.events)
 
-        self.geotag_files_dict = defaultdict(list)
-        self.timeline_files_dict = defaultdict(list)
+        #self.geotag_files_dict = defaultdict(list)
+        #self.timeline_files_dict = defaultdict(list)
 
-        self.geotaged_exist = []
-        self.timeline_exist = []
+        #self.geotaged_exist = []
+        #self.timeline_exist = []
         self.output_path = output_path
-        self.__get_files(input_paths)
+        self.input_paths = input_paths
+        # self.__get_files(input_paths)
 
         self.class_tracker.create_snapshot()
         logging.debug("size: {} bytes".format(asizeof(self)))
@@ -139,10 +141,12 @@ class TwitterPeriodClf(object):
 
         return False
 
-    def __get_files(self, folders):
+    def __get_files(self, event_id):
         """ parse all tweets files all events from the given folder"""
         # { event1: [files], event2: [files }
-        for folder in folders:
+        geotag_files = []
+        timeline_files = []
+        for folder in self.input_paths:
             logging.debug("searching folder: {}".format(folder))
             for root, dirs, files in os.walk(folder):
                 for filename in files:
@@ -150,36 +154,27 @@ class TwitterPeriodClf(object):
                     # gets the number that file name starts with
                     file_match = re.search('(\d+)_', filename)
                     if file_match:
-                        event_id = int(file_match.group(1))
-                        logging.debug("this file starts with {}".format(event_id))
-                        # check if this number is one of the event ids
-                        if event_id in self.events:
+                        if int(file_match.group(1)) == event_id:
+                            logging.debug("this file starts with {}".format(event_id))
                             if self.geotag_folder in folder:
                                 # logging.debug("this is a geotag data file")
-                                self.geotag_files_dict[event_id].append(os.path.join(root, filename))
-                                if event_id not in self.geotaged_exist:
-                                    # logging.debug("adding event to geotagged: {}".format(file_start))
-                                    self.geotaged_exist.append(event_id)
+                                geotag_files.append(os.path.join(root, filename))
                             elif self.timeline_folder in folder:
                                 # logging.debug("this is a timeline file")
-                                self.timeline_files_dict[event_id].append(os.path.join(root, filename))
-                                if event_id not in self.timeline_exist:
-                                    # logging.debug("adding event to timeline: {}".format(file_start))
-                                    self.timeline_exist.append(event_id)
-                            # logging.debug("adding file to event {}".format(filename))
+                                timeline_files.append(os.path.join(root, filename))
+        return geotag_files, timeline_files
 
     def calculate_user_periods(self):
         """ read tweets from files and classify them as it reads"""
         for event in self.events:
+            (geotag_files, timeline_files) = self.__get_files(int(event))
             ev_begin = self.event_helper.get_event_times(event)[0]
             ev_end = self.event_helper.get_event_times(event)[1]
 
             # classify user tweets only if files exist in both geotagged and timeline
             output = os.path.join(self.output_path, r"{}_user_stats.json".format(event))
             #if event in self.geotaged_exist and event in self.timeline_exist and not os.path.isfile(output):
-            if event in self.geotaged_exist and event in self.timeline_exist:
-                geotag_files = self.geotag_files_dict[event]
-                timeline_files = self.timeline_files_dict[event]
+            if (len(geotag_files) > 0) and (len(timeline_files) > 0):
                 for file_name in geotag_files:
                     logging.debug("start reading file {}".format(file_name))
                     self.__read_tweets(file_name, "geotag", event, ev_begin, ev_end)
@@ -190,8 +185,13 @@ class TwitterPeriodClf(object):
 
             logging.debug("Event : {} processed".format(event))
             print_memory_usage()
-            logging.debug("size: {} bytes".format(asizeof(self)))
-            logging.debug("tweets_counts_by_date size: {} bytes".format(asizeof(self.tweets_counts_by_date)))
+            logging.debug("size: {} bytes, tweets_counts_by_date size: {} byte".format(asizeof(self),
+                                                                                       asizeof(self.tweets_counts_by_date)))
+            user_key_num = 0
+            for date in self.tweets_counts_by_date:
+                user_key_num += len(self.tweets_counts_by_date[date].keys())
+            logging.debug("date_key_num: {} user_key_num: {}".format(len(self.tweets_counts_by_date.keys()), user_key_num))
+
             self.class_tracker.create_snapshot()
 
             self.__reset_event_data()
@@ -256,8 +256,10 @@ class TwitterPeriodClf(object):
                     if user_id in info:
                         self.tweets_counts_by_date[tweet_date_local_str][user_id] += 1
                     else:
+                        self.total_users += 1
                         self.tweets_counts_by_date[tweet_date_local_str][user_id] = 1
                 else:
+                    self.total_users +=1
                     user_info = {user_id: 1}
                     self.tweets_counts_by_date[tweet_date_local_str] = user_info
 
@@ -270,8 +272,11 @@ class TwitterPeriodClf(object):
     def __save_period_stats(self, output):
         """ create information of each date and number of tweets
             save all information to json file ex. "319_user_stats.csv"""
-        logging.debug("save file: {} total tweets: {} timeline tweets duplication: {}".format(output, self.total_tweets,
-                                                                                              self.total_timeline_duplication))
+        logging.debug("save file: {} total tweets: {} total_users: {}"
+                      " timeline tweets duplication: {}".format(output,
+                                                                self.total_tweets,
+                                                                self.total_users,
+                                                                self.total_timeline_duplication))
         with open(output, 'w') as file:
             json.dump(self.tweets_counts_by_date, file)
 
