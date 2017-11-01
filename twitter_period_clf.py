@@ -158,10 +158,10 @@ class TwitterPeriodClf(object):
                             logging.debug("this file starts with {}".format(event_id))
                             if self.geotag_folder in folder:
                                 # logging.debug("this is a geotag data file")
-                                geotag_files.append(os.path.join(root, filename))
+                                geotag_files.append(filename)
                             elif self.timeline_folder in folder:
                                 # logging.debug("this is a timeline file")
-                                timeline_files.append(os.path.join(root, filename))
+                                timeline_files.append(filename)
         return geotag_files, timeline_files
 
     def calculate_user_periods(self):
@@ -176,11 +176,13 @@ class TwitterPeriodClf(object):
             #if event in self.geotaged_exist and event in self.timeline_exist and not os.path.isfile(output):
             if (len(geotag_files) > 0) and (len(timeline_files) > 0):
                 for file_name in geotag_files:
-                    logging.debug("start reading file {}".format(file_name))
-                    self.__read_tweets(file_name, "geotag", event, ev_begin, ev_end)
+                    file_name_full = os.path.join(self.input_paths[0], file_name)
+                    logging.debug("start reading file {}".format(file_name_full))
+                    self.__read_tweets(file_name_full, "geotag", event, ev_begin, ev_end)
                 for file_name in timeline_files:
-                    logging.debug("start reading file {}".format(file_name))
-                    self.__read_tweets(file_name, "timeline", event, ev_begin, ev_end)
+                    file_name_full = os.path.join(self.input_paths[1], file_name)
+                    logging.debug("start reading file {}".format(file_name_full))
+                    self.__read_tweets(file_name_full, "timeline", event, ev_begin, ev_end)
                 self.__save_period_stats(output)
 
             logging.debug("Event : {} processed".format(event))
@@ -217,6 +219,8 @@ class TwitterPeriodClf(object):
             tweet_date_utc = tweet['created_at']
             # logging.debug("utc tweet date {}".format(tweet_date_utc))
             tweet_date_local = self.event_helper.convert_to_loctime_from_event(tweet_date_utc, event)
+            timestamp = int(time.mktime(tweet_date_local.date().timetuple()))
+            # logging.debug("timestamp: {}".format(timestamp))
             tweet_date_local_str = str(tweet_date_local.date())
             # logging.debug("tweet date: {}".format(tweet_date_local_str))
 
@@ -251,17 +255,17 @@ class TwitterPeriodClf(object):
                         self.total_timeline_duplication += 1
 
             if not duplicate:
-                if tweet_date_local_str in self.tweets_counts_by_date:
-                    info = self.tweets_counts_by_date[tweet_date_local_str]
+                if timestamp in self.tweets_counts_by_date:
+                    info = self.tweets_counts_by_date[timestamp]
                     if user_id in info:
-                        self.tweets_counts_by_date[tweet_date_local_str][user_id] += 1
+                        self.tweets_counts_by_date[timestamp][user_id] += 1
                     else:
                         self.total_users += 1
-                        self.tweets_counts_by_date[tweet_date_local_str][user_id] = 1
+                        self.tweets_counts_by_date[timestamp][user_id] = 1
                 else:
                     self.total_users +=1
                     user_info = {user_id: 1}
-                    self.tweets_counts_by_date[tweet_date_local_str] = user_info
+                    self.tweets_counts_by_date[timestamp] = user_info
 
         except Exception as e:
             logging.debug("could not classify tweet error: {}".format(e))
@@ -282,6 +286,7 @@ class TwitterPeriodClf(object):
 
 if __name__ == '__main__':
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+    # path0 must be geotagged file path and path1 must be timeline file path
     input_paths = ["../events_tweets/Event - 319 - Moore Tornado/geotagged_from_archive/",
                    "../events_tweets/Event - 319 - Moore Tornado/user_timelines/"]
     output_path = "../user_stats"
