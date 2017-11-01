@@ -65,7 +65,7 @@ class TwitterPeriodClf(object):
         Attributes:
             self.total_duplication (int) :
             self.total_tweets (int) :
-            self.tweets_counts_by_date (dict) :
+            self.tweets_counts_by_date (dict) : {timestamp(int) : {user_id1(int): count(int), user_id2: count...
 
             self.before (list) : Ex) self_before = [tweet_id1, tweet_id2...]
             self.after (list) :
@@ -73,10 +73,8 @@ class TwitterPeriodClf(object):
 
             self.event_helper (EventMetaDataHelper class) :
             self.events (list) : Ex) [1, 2, 3....]
-            self.files_dict (dict) : Ex) { event1 : [file1, file2, file3], event2: [file1, file2, file3]}
-            self.geotagged_exist (list) : has events ids that have at least one file exist in the geotagged foler
-            self.timeline_exist (list) : has events ids that have at least one file exist in the timeline foler
             self.output_path (string) : output path where user stats should be saved
+            self.input_paths (list) : input paths of geotag files and timeline files
     """
 
     geotag_folder = "geotagged_from_archive"
@@ -105,14 +103,8 @@ class TwitterPeriodClf(object):
         self.events = self.event_helper.get_all_events()
         logging.debug(self.events)
 
-        #self.geotag_files_dict = defaultdict(list)
-        #self.timeline_files_dict = defaultdict(list)
-
-        #self.geotaged_exist = []
-        #self.timeline_exist = []
         self.output_path = output_path
         self.input_paths = input_paths
-        # self.__get_files(input_paths)
 
         self.class_tracker.create_snapshot()
         logging.debug("size: {} bytes".format(asizeof(self)))
