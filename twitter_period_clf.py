@@ -7,6 +7,7 @@ Created on Oct 5, 2017
 import pandas as pd
 import logging, sys
 import json
+import csv
 import os
 import re
 import smart_open
@@ -164,7 +165,7 @@ class TwitterPeriodClf(object):
             ev_end = self.event_helper.get_event_times(event)[1]
 
             # classify user tweets only if files exist in both geotagged and timeline
-            output = os.path.join(self.output_path, r"{}_user_stats.json".format(event))
+            output = os.path.join(self.output_path, r"{}_user_stats.csv".format(event))
             #if event in self.geotaged_exist and event in self.timeline_exist and not os.path.isfile(output):
             if (len(geotag_files) > 0) and (len(timeline_files) > 0):
                 for file_name in geotag_files:
@@ -213,7 +214,7 @@ class TwitterPeriodClf(object):
             tweet_date_local = self.event_helper.convert_to_loctime_from_event(tweet_date_utc, event)
             timestamp = int(time.mktime(tweet_date_local.date().timetuple()))
             # logging.debug("timestamp: {}".format(timestamp))
-            tweet_date_local_str = str(tweet_date_local.date())
+            # tweet_date_local_str = str(tweet_date_local.date())
             # logging.debug("tweet date: {}".format(tweet_date_local_str))
 
             duplicate = False
@@ -273,8 +274,25 @@ class TwitterPeriodClf(object):
                                                                 self.total_tweets,
                                                                 self.total_users,
                                                                 self.total_timeline_duplication))
-        with open(output, 'w') as file:
-            json.dump(self.tweets_counts_by_date, file)
+        # remove file if it exist
+        try:
+            os.remove(output)
+        except OSError:
+            pass
+
+        for timestamp in self.tweets_counts_by_date:
+            date = time.strftime("%Y-%m-%d", time.localtime(timestamp))
+            # logging.debug("date= {}".format(date))
+            result_list = []
+            for user in self.tweets_counts_by_date[timestamp]:
+                count = self.tweets_counts_by_date[timestamp][user]
+                result_list.append((date, user, count))
+            with open(output, 'a') as file:
+                csv_out = csv.writer(file)
+                # logging.debug("writing result list for date= {}".format(result_list))
+                for row in result_list:
+                    csv_out.writerow(row)
+
 
 if __name__ == '__main__':
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
