@@ -49,6 +49,7 @@ class HashtagAutoFltr(object):
                                     ratings.append(0)
                             df['Relevance'] = ratings
                             name_only = os.path.splitext(file)[0]
+                            df = df.sort_values(['Relevance', 'Count', "Hashtag"], ascending=[False, False, True])
                             df.to_csv(output_path + name_only+"_filtered.csv", index=False)
                             logging.debug("file name: {} total num: {} hashtag num after filtering: {}"
                                           " total count 10 hashtag: {} num_notfiltered_more_than_10_hashtags: {}".format(

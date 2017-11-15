@@ -27,7 +27,7 @@ class ListMaker(object):
             slangs_data = open("slangs1.html", 'r').text
         except:
             slangs_data = requests.get("https://en.wiktionary.org/wiki/Appendix:English_internet_slang").text
-            f = open("slangs1.thml" , 'w')
+            f = open("slangs1.thml", 'w')
             f.write(slangs_data)
             f.close
 
@@ -80,7 +80,7 @@ class ListMaker(object):
                             total_len += len(rated_pd.index)
                             for index, row in rated_pd.iterrows():
                                 rate = row['Relevance']
-                                logging.debug("{} {} {}".format(row[0], row[1], row[2]))
+                                # logging.debug("{} {} {}".format(row[0], row[1], row[2]))
                                 if int(rate) is 0:
                                     hashtag = row['Hashtag']
                                     total_zero_len += 1
@@ -118,7 +118,7 @@ class HashtagDBManager(object):
         sql = "INSERT OR IGNORE INTO " + self.table_name + "(hashtag) VALUES(?)"
         try:
             self.c.execute(sql, (hashtag,))
-            logging.debug("insert id: {}".format(self.c.lastrowid))
+            # logging.debug("insert id: {}".format(self.c.lastrowid))
         except sqlite3.OperationalError as msg:
             logging.debug("insert error {}".format(msg))
         self.conn.commit()
@@ -147,10 +147,39 @@ class HashtagDBManager(object):
         self.conn.close()
 
 
+def fix_file(events, path):
+    for event in events:
+        orig = os.path.join(path, "{}_hashtag_counts_orig.csv".format(str(event)))
+        cutout = os.path.join(path, "{}_hashtag_counts.csv".format(str(event)))
+        with open(orig, 'r') as f:
+            logging.debug("file name : {}".format(f))
+            data_orig = pd.read_csv(f, names = ["Hashtag", "Count"])
+            logging.debug("file length: {}".format(len(data_orig)))
+
+        with open(cutout, 'r') as f:
+            logging.debug("file name : {}".format(f))
+            data_cutout = pd.read_csv(f)
+            logging.debug("file length: {}".format(len(data_cutout)))
+
+        new_pd = pd.merge(data_orig, data_cutout, on='Hashtag', how='left')
+        logging.debug("new_pd length: {}".format(len(new_pd)))
+        logging.debug("new_pd: {}".format(new_pd.head()))
+        logging.debug("null values: {}".format(new_pd.isnull().sum()))
+        logging.debug("null and count1: {}".format(new_pd[(new_pd['Count_x'] >= 1) & (new_pd['Count_x'] <= 10) &
+                                                          (new_pd['Count_y'].isnull())].count()))
+        new_pd.rename(columns={'Count_x': 'Count'}, inplace=True)
+        new_pd.drop('Count_y', axis=1, inplace=True)
+        # new_pd.drop('Unnamed: 4', axis=1, inplace=True)
+        # new_pd.drop('In-text', axis=1, inplace=True)
+        logging.debug("new_pd: {}".format(new_pd['Count'].head()))
+        new_pd["Relevance"] = new_pd["Relevance"].fillna(0).astype(int)
+        logging.debug("new_pd: {}".format(new_pd.head()))
+        new_pd.to_csv(os.path.join(path, "{}_hashtag_counts_new.csv".format(event)), mode='w', index=False)
+
 
 if __name__ == '__main__':
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
-    db_name = 'irrelevant_hashtag.db'
+    """db_name = 'irrelevant_hashtag.db'
     table_name = 'list'
     zero_hashtag_db_info = [db_name, table_name]
     list_maker = ListMaker(zero_hashtag_db_info)
@@ -161,4 +190,9 @@ if __name__ == '__main__':
     # sources from view-source:https://en.wiktionary.org/wiki/Appendix:English_internet_slang
     #list_maker.top_slangs1('slangs1_raw.txt', 'slangs1.txt')
     rated_path = "../hashtag_rated/relevant_tweets"
-    list_maker.parse_irrelevant_from_rated_files(rated_path)
+    list_maker.parse_irrelevant_from_rated_files(rated_path)"""
+
+    rated_path = "../hashtag_rated/relevant_tweets_copy"
+    #events = [76, 88, 106, 183]
+    events2 = [1004]
+    fix_file(events2, rated_path)
