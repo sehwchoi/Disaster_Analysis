@@ -169,11 +169,13 @@ def fix_file(events, path):
                                                           (new_pd['Count_y'].isnull())].count()))
         new_pd.rename(columns={'Count_x': 'Count'}, inplace=True)
         new_pd.drop('Count_y', axis=1, inplace=True)
-        # new_pd.drop('Unnamed: 4', axis=1, inplace=True)
-        # new_pd.drop('In-text', axis=1, inplace=True)
+        new_pd.drop('Unnamed: 3', axis=1, inplace=True)
+        new_pd.drop('Unnamed: 4', axis=1, inplace=True)
+        #new_pd.drop('In-text', axis=1, inplace=True)
         logging.debug("new_pd: {}".format(new_pd['Count'].head()))
         new_pd["Relevance"] = new_pd["Relevance"].fillna(0).astype(int)
         logging.debug("new_pd: {}".format(new_pd.head()))
+        new_pd = new_pd.sort_values(['Relevance', 'Count', "Hashtag"], ascending=[False, False, True])
         new_pd.to_csv(os.path.join(path, "{}_hashtag_counts_new.csv".format(event)), mode='w', index=False)
 
 
@@ -193,6 +195,6 @@ if __name__ == '__main__':
     list_maker.parse_irrelevant_from_rated_files(rated_path)"""
 
     rated_path = "../hashtag_rated/relevant_tweets_copy"
-    #events = [76, 88, 106, 183]
-    events2 = [1004]
-    fix_file(events2, rated_path)
+    events = [203, 204]
+    # events2 = [1004]
+    fix_file(events, rated_path)
