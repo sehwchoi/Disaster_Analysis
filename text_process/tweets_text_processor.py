@@ -64,6 +64,7 @@ class TextProcessor(object):
                 file_match = re.search('(\d+)_', file_name)
                 if file_match:
                     with smart_open.smart_open(os.path.join(roots, file_name), 'r') as f:
+                        logging.debug("file: {}".format(file_name))
                         for line in f:
                             # do not add duplicated tweet by tweet unique id
                             tweet = json.loads(line)
@@ -74,11 +75,12 @@ class TextProcessor(object):
                             tweet_date_local = self.event_helper.convert_to_loctime_from_event(tweet_date_utc,
                                                                                                event)
                             date = str(tweet_date_local.date())
-                            logging.debug("tweet: {} date: {}".format(tweet_text, date))
+                            # logging.debug("tweet: {} date: {}".format(tweet_text, date))
                             words = self.__tokenize_tweet(tweet_text)
-                            logging.debug(words)
+                            # logging.debug(words)
                             self.__update_count(words, date, tweet_id)
                             self.total_tweets += 1
+                        self.db_manager.commit_db()
 
 if __name__ == '__main__':
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
