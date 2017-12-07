@@ -307,7 +307,7 @@ if __name__ == '__main__':
     # print memory usage using psutil
     print_memory_usage()
 
-    classifier = TwitterPeriodClf(input_paths, output_path,incident_metadata_path)
+    classifier = TwitterPeriodClf(input_paths, output_path, incident_metadata_path)
     # read tweets from file and classify their time periods
     classifier.calculate_user_periods()
 
