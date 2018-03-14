@@ -14,174 +14,157 @@ import smart_open
 import codecs
 import nltk
 import time
+import pickle
 import numpy as np
+import seaborn as sns
+
+from collections import OrderedDict
+from statistics import mean, stdev
 
 import itertools
 import math
 
 # import external libraries
-from tweets_text_processor import TextProcessor
+from text_process.tweets_text_processor import TextProcessor
 
 class TopicModeler:
     tknzr = nltk.tokenize.TweetTokenizer()
-    stemmer = nltk.stem.PorterStemmer()
     stopwords = nltk.corpus.stopwords.words('english')
     stemmer = nltk.stem.PorterStemmer()
+    #stemmer = SnowballStemmer("english")
 
     def __init__(self):
         pass
 
-    def find_topics_by_period(self, corpus, n_features, n_topics, incident):
+    def train_test_split(self, tweets):
+        num_doc = len(tweets)
+        pivot = int(num_doc*0.8)
+        train = tweets[:pivot]
+        test = tweets[pivot:]
+
+        return train, test
+
+    def find_topics_by_period(self, corpus, n_features, n_topics, incident, perplexity=False):
         topics_by_period = []
         pipelines = []
+        result = None
+        perplexity_result = []
         for index, tweets in enumerate(corpus):
             period_type = 'bf' if index is 0 else 'af'
-            result = self.find_n_topics(tweets, n_features, n_topics, incident, period_type)
-            topics_by_period.append(result[1])
-            pipelines.append(result[0])
+            if perplexity:
+                train, test = self.train_test_split(tweets)
+                [pipeline, model, lda, vect] = self.find_n_topics(train, n_features, n_topics, incident, period_type)
+                perplexity = lda.perplexity(vect.transform(test))
+                perplexity_result.append(perplexity)
+            else:
+                [pipeline, model, lda, vect] = self.find_n_topics(tweets, n_features, n_topics, incident, period_type)
+                result = self.__flatten_results(pipeline, model, period_type)
+                topics_by_period.append(result)
 
-        self.__compare_topics(topics_by_period[0], topics_by_period[1], n_topics)
+        if perplexity:
+            return perplexity_result
+        else:
+            self.__compare_topics(topics_by_period[0]['topic_word_dist_list'],
+                                  topics_by_period[1]['topic_word_dist_list'])
+            return topics_by_period
 
-        return result
+    def find_n_topics(self, tweets, n_features, n_topics, incident, period):
+        # train the model on the whole data
+        override = False
+        backup_name = "backup/topic1_pipeline_{}_{}_perplex.p".format(n_topics, period)
+        if override:
+            pipeline = pickle.load(open(backup_name, "rb"))
+            model = pipeline.transform(tweets)
+            lda = pipeline.named_steps['lda']
+            vect = pipeline.named_steps['vect']
+            return [pipeline, model, lda, vect]
 
-    def parse_topics(self, topics, feature_names, num_words=100):
-        word_dists = []  # [{word1: weight1, word2: weight2, word3: weight3....}, {word1, weight1, word2: weight2....}...]
-        for topic_idx, topic in enumerate(topics):
-            feature_list = {}  # {word1: weight, word2: weight ...}
-            for i in topic.argsort()[:-num_words - 1:-1]:
+        pipeline = Pipeline([
+            ('vect', CountVectorizer(max_df=0.95, min_df=2,
+                        max_features=n_features,
+                        stop_words='english')),
+            ('lda', LatentDirichletAllocation(n_components=n_topics,
+                                              max_iter=10,
+                                              learning_method='online',
+                                              learning_offset=20.)),
+        ])
+
+        model = pipeline.fit_transform(tweets)
+        # save pipeline
+        pickle.dump(pipeline, open(backup_name, "wb+"))
+
+        lda = pipeline.named_steps['lda']
+        vect = pipeline.named_steps['vect']
+
+        return [pipeline, model, lda, vect]
+
+    """
+    word_dists e.g. [{word1: weight1, word2: weight2, word3: weight3....}, {word1, weight1, word2: weight2....}...]
+    """
+    def __get_topic_word_dist(self, component, feature_names, num_words=100):
+        word_dists = []
+        for topic_idx, features in enumerate(component):
+            feature_list = OrderedDict()  # {word1: weight, word2: weight ...}
+            for i in features.argsort()[:-num_words - 1:-1]:
                 feature = feature_names[i]
-                weight = round(topic[i], 2)
+                weight = features[i]
                 feature_list[feature] = weight
 
             word_dists.append(feature_list)
         return word_dists
 
-    def find_n_topics(self, tweets, n_features, n_topics, incident, period):
-        pipeline = Pipeline([
-            ('vect', CountVectorizer(max_df=0.95, min_df=2,
-                                     max_features=n_features,
-                                     stop_words='english')),
+    '''
+    Parse topic distribution and word distribution.
+    Return the result of topic distribution, topic name sorted by distribution, and list of topic word distribution
+    '''
+    def __parse_dist_info(self, components, feature_names, model, num_topics=20):
+        average = np.average(np.array(model), axis=0)
+        print("topic distribution: \n")
+        print("average:", average)
 
-            ('lda', LatentDirichletAllocation(n_topics=n_topics,
-                                              max_iter=5,
-                                              learning_method='online',
-                                              learning_offset=20.)),
-        ])
-        topic_dist = pipeline.fit_transform(tweets)
+        topic_word_dist_list = self.__get_topic_word_dist(components, feature_names)
 
-        # TODO: save pipeline
+        topic_sorted_by_dist = average.argsort()[::-1]
+        print("topic sorted by dist:", topic_sorted_by_dist)
 
-        average = np.average(np.array(topic_dist), axis=0)
-        top_topics = average.argsort()[:-4:-1]
-        print("average", average)
+        for topic_name in topic_sorted_by_dist[:num_topics]:
+            word_dist = topic_word_dist_list[topic_name]
+            words = ', '.join(list(word_dist.keys())[:num_topics])
+            print("topic " + str(topic_name) + " top words:", words)
 
+        result = {"avg": average, "topic_sorted_by_dist": topic_sorted_by_dist,
+                  "topic_word_dist_list": topic_word_dist_list}
+
+        print("\n\n")
+
+        return result
+
+    def __write_topics(self, period, topic_word_dist_list, topic_sorted_by_dist, average):
+        with codecs.open(''.join(['data/model1/', str(num_topic) + "_" + str(incident) + "_"
+                                  + period, '_topics1.csv']), "w+",'utf-8') as out_file:
+            writer = csv.writer(out_file, delimiter=',', quoting=csv.QUOTE_MINIMAL)
+            for topic_name in topic_sorted_by_dist:
+                topic_str = "topic" + str(topic_name) + " | " + str(average[topic_name])
+                writer.writerow([topic_str, ' | '.join([key + ' ' + str(round(value, 2)) for key, value in
+                                                        topic_word_dist_list[topic_name].items()])])
+
+    def __flatten_results(self, pipeline, model, period):
         components = pipeline._final_estimator.components_
-        top_component = [components[i] for i in top_topics]
+        components /= components.sum(axis=1)[:, np.newaxis]
+        print("normalized components", components)
         feature_names = pipeline.named_steps['vect'].get_feature_names()
 
-        top_topics_words = self.parse_topics(top_component, feature_names, num_words=5)
-        print("top_topics", top_topics)
-        print("top_topics_words", [', '.join(dist.keys()) for dist in top_topics_words])
+        result = self.__parse_dist_info(components, feature_names, model)
+        self.__write_topics(period, result['topic_word_dist_list'], result['topic_sorted_by_dist'], result['avg'])
 
-        topics = self.parse_topics(components, feature_names, num_words=30)
+        with open('data/model1/distribution/{}_{}.pkl'.format("result", period), 'wb') as f:
+            pickle.dump(result, f, pickle.HIGHEST_PROTOCOL)
+        return result
 
-        with codecs.open(''.join(['data/topic_models/topics/', str(n_topics) + "_" + str(incident)+"_"+period, '_topics.csv']), "w+",
-                         'utf-8') as out_file:
-            for topic_idx, topic in enumerate(topics):
-                out_file.write(''.join([key + ' ' + str(value) + ' | ' for key, value in topic.items()]))
-                out_file.write('\n')
-
-        with codecs.open(''.join(['data/topic_models/topics/', str(n_topics) + "_" + str(incident)+"_"+period, '_topics_reformat.csv']), "w+",
-                     'utf-8') as out_file:
-            csv_out = csv.writer(out_file, lineterminator='\n')
-            csv_out.writerow(["topic", "word", "weight"])
-            for topic_idx, topic in enumerate(topics):
-                [csv_out.writerow([topic_idx, key, str(value)]) for key, value in topic.items()]
-
-        ##cross validation
-        """
-        start = time.time()
-        shuffle(tweets)
-        perplexity = 0
-        for i in range(0, 5):
-            temp = list(tweets)
-            test = tweets[int(math.floor(i * 0.2 * len(temp))):int(math.floor((i + 1) * 0.2 * len(temp)))]
-            del temp[int(math.floor(i * 0.2 * len(tweets))):int(math.floor((i + 1) * 0.2 * len(tweets)))]
-            pipeline.fit(temp)
-            perplexity += pipeline.named_steps['lda'].perplexity(pipeline.named_steps['vect'].transform(tweets))
-        end = time.time()
-        print("elapsed: {} n_topic: {} Period: {} Perplexity: {}".format(end-start, n_topics, period, str(perplexity / 5.0)))
-        """
-        return [pipeline, topics]
-
-    def __compare_topics(self, bf_topics, af_topics, n_topics):
-        bf_sim_topics_idx = set()
-        af_sim_topics_idx = set()
-
-        # {0: [0.016196206007786252, 0.0088722334298753629, 0.003771657472340892, 0.0013458802544991553, 0.0044274557053691687, 0.25635824525587525, ...],
-        #  1: [0.0036628029951590161, 0.049160918784579281, 0.0018400499119671306, 0.0084592512187031035, 0.017672816117843809, 0.015143889779694346,
-        topic_similarity = {}
-        for i in range(len(bf_topics)):
-            sim_scores = []
-            for j in range(len(af_topics)):
-                score = self.__consine_similarirty(bf_topics[i], af_topics[j])
-                # logging.debug("bf: {} af: {} score: {}".format(i, j, score))
-                sim_scores.append(score)
-            topic_similarity[i] = sim_scores
-        logging.debug("Topic similiarity: {}".format(topic_similarity))
-
-        score_file = ''.join(['data/topic_models/topics/', str(n_topics) + "_" + str(incident) + '_topics_sim_scores.csv'])
-        with codecs.open(score_file, "w+", 'utf-8') as file:
-            json.dump(topic_similarity, file)
-
-        # filter out similar topics
-        for bf_topic_idx, scores in topic_similarity.items():
-            for af_topic_idx in range(len(scores)):
-                if scores[af_topic_idx] > 0.5:
-                    # keep tracks of topic number
-                    bf_sim_topics_idx.add(bf_topic_idx)
-                    af_sim_topics_idx.add(af_topic_idx)
-
-        logging.debug("bf_sim:{} af_sim:{}".format(len(bf_sim_topics_idx), len(af_sim_topics_idx)))
-        bf_unique_topics = []
-        af_unique_topics = []
-        bf_comm_topics = []
-        af_comm_topics = []
-
-        for i in range(len(bf_topics)):
-            if i not in bf_sim_topics_idx:
-                bf_unique_topics.append(bf_topics[i])
-            else:
-                bf_comm_topics.append(bf_topics[i])
-
-        for i in range(len(af_topics)):
-            if i not in af_sim_topics_idx:
-                af_unique_topics.append(af_topics[i])
-            else:
-                af_comm_topics.append(af_topics[i])
-
-        logging.debug("Topic unique  bf_len:{} af_len:{}".format(len(bf_unique_topics), len(af_unique_topics)))
-        #logging.debug("Topic unique  bf: {} af: {}".format(bf_unique_topics, af_unique_topics))
-
-        file_names = ["unique_bf_", "unique_af_", 'common_bf_', 'common_af_']
-        topic_to_write = [bf_unique_topics, af_unique_topics, bf_comm_topics, af_comm_topics]
-        for i, file_name in enumerate(file_names):
-            file_name = ''.join(['data/topic_models/topics/', str(n_topics) + "_" + str(incident) + '_' + file_name + 'topics.csv'])
-            with codecs.open(file_name, "w+", 'utf-8') as out_file:
-                csv_out = csv.writer(out_file, lineterminator='\n')
-                csv_out.writerow(["topic", "word", "weight"])
-                for topic_idx, topic_list in enumerate(topic_to_write[i]):
-                    for feature, weight in topic_list.items():
-                        csv_out.writerow([topic_idx, feature, str(weight)])
-
-    def __consine_similarirty(self, topic1, topic2):
+    def __cosine_similarirty(self, topic1, topic2):
         words = list(topic1.keys() | topic2.keys())
         vec1 = [topic1.get(word, 0) for word in words]
         vec2 = [topic2.get(word, 0) for word in words]
-
-        #logging.debug("Vec1: {} \n Vec2: {}".format(topic1.keys(), topic2.keys()))
-        # intersection = set(topic1.keys()) & set(topic2.keys())
-        #logging.debug("Intersection: {}".format(intersection))
 
         numerator = np.dot(vec1, vec2)
         norm_vec1 = np.linalg.norm(vec1)
@@ -189,42 +172,144 @@ class TopicModeler:
 
         return numerator / (norm_vec1 * norm_vec2)
 
-    def _preproc_text(self, text):
-        remove_regex = ['\\s*@\\w*\\s*', '#', '!', '\\.', ';', ':', '\?', '\\W+\\d+', '^\\d+\\W+', '^\\d+$',
-                        ',', '"', 'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+',
-                        '&amp', '\\(', '\\)', '-', '\\[', '\\]', '\\|', '\\$', '~', '<', '>', '&', 'rt']
+    def __get_sim_matrix(self, bf_topics, af_topics):
+        all_matrix = {}
+        bf_bf_topic_similarity = []
+        bf_af_topic_similarity = []
+        for i, feature in enumerate(bf_topics):
+            bf_sim_scores = []
+            for feature_to_cmp in bf_topics:
+                score = self.__cosine_similarirty(feature, feature_to_cmp)
+                bf_sim_scores.append(score)
+            #logging.debug("bf i: {} bf scores: {}".format(i, bf_sim_scores))
+            bf_bf_topic_similarity.append(bf_sim_scores)
 
-        regex_string = '|'.join(remove_regex)
-        regex = re.compile(r'(' + regex_string + ')')
-        text = regex.sub('', text)
-        sanitized_text = [self.stemmer.stem(w) for w in self.tknzr.tokenize(text.lower()) if
-                          w not in self.stopwords]
-        sanitized_text = [w for w in sanitized_text if len(w.strip()) > 2]
-        return sanitized_text
+            af_sim_scores = []
+            for feature_to_cmp in af_topics:
+                score = self.__cosine_similarirty(feature, feature_to_cmp)
+                af_sim_scores.append(score)
+            #logging.debug("bf i: {} af scores: {}".format(i, af_sim_scores))
+            bf_af_topic_similarity.append(af_sim_scores)
 
-    def extract_tweet_text(self, incident, input_path):
-        corpus = list()
-        for dirpath, dirnames, filenames in os.walk(input_path):
-            # del dirnames[:]
-            for filename in [filename for filename in filenames if filename.startswith(str(incident))]:
-                for line in smart_open.smart_open(os.path.join(dirpath, filename)):
-                    try:
-                        tweet = json.loads(line.decode('utf-8'))
-                        text = tweet['text']
-                        text = ' '.join(self._preproc_text(text))
-                        corpus.append(text)
-                    except Exception as e:
-                        print(str(e))
+        bf_bf_topic_sim_matrix = np.array(bf_bf_topic_similarity)
+        print("shape", bf_bf_topic_sim_matrix.shape, "bf bf sim matrix", bf_bf_topic_sim_matrix)
 
-        return corpus
+        bf_af_topic_sim_matrix = np.array(bf_af_topic_similarity)
+        print("shape", bf_bf_topic_sim_matrix.shape, "bf af sim matrix", bf_af_topic_sim_matrix)
+
+        #af_bf_topic_similarity = []
+        af_af_topic_similarity = []
+        for i, feature in enumerate(af_topics):
+
+            # update af - bf topic similarity from the previous bf - af matrix
+            # af_bf_topic_similarity.append(bf_af_topic_sim_matrix[:, i])
+
+            af_sim_scores = []
+            for feature_to_cmp in af_topics:
+                score = self.__cosine_similarirty(feature, feature_to_cmp)
+                af_sim_scores.append(score)
+
+            #logging.debug("af i: {} af scores: {}".format(i, af_sim_scores))
+            af_af_topic_similarity.append(af_sim_scores)
+
+        af_af_topic_sim_matrix = np.array(af_af_topic_similarity)
+        print("shape", bf_bf_topic_sim_matrix.shape, "af af sim matrix", af_af_topic_sim_matrix)
+
+        all_matrix['bf_bf_matrix'] = bf_bf_topic_sim_matrix
+        all_matrix['bf_af_matrix'] = bf_af_topic_sim_matrix
+        all_matrix['af_bf_matrix'] = bf_af_topic_sim_matrix.transpose()
+        all_matrix['af_af_matrix'] = af_af_topic_sim_matrix
+
+        return all_matrix
+
+    def __find_unique_topic(self, topic_sim_matrix, threshold=0.7):
+
+        topic_idx = set(range(topic_sim_matrix.shape[0]))
+        common_topic_idx = set()
+        for i in range(topic_sim_matrix.shape[0]):
+            idx = np.where(topic_sim_matrix[i] > threshold)[0]
+            print("scores", topic_sim_matrix[i])
+            print("i", i, "matching score idx", idx)
+            if len(idx) > 0:
+                common_topic_idx.add(i)
+
+        unique_topic_idx = topic_idx - common_topic_idx
+
+        return list(common_topic_idx), list(unique_topic_idx)
+
+    def __compare_sim(self, topic_sim_matrix, within=False):
+        sim_scores = []
+        for i in range(topic_sim_matrix.shape[0]):
+            if within:
+                scores = np.hstack((topic_sim_matrix[i, :i], topic_sim_matrix[i, i + 1:]))
+            else:
+                scores = topic_sim_matrix[i]
+            sim_scores.extend(scores)
+
+        mean_sim = mean(sim_scores)
+        max_sim = max(sim_scores)
+
+        sns.kdeplot(sim_scores)
+        return {"sim_scores": sim_scores, "max_sim": max_sim, "mean_sim": mean_sim,
+                "stdev_sim": stdev(sim_scores)}
+
+    def __compare_max_sim(self, topic_sim_matrix, within=False):
+        max_sim_scores = []
+        for i in range(topic_sim_matrix.shape[0]):
+            if within:
+                max_score = max(np.hstack((topic_sim_matrix[i, :i], topic_sim_matrix[i, i + 1:])))
+            else:
+                max_score = max(topic_sim_matrix[i, :])
+            max_sim_scores.append(max_score)
+
+        mean_sim = mean(max_sim_scores)
+        max_sim = max(max_sim_scores)
+
+        sns.kdeplot(max_sim_scores)
+        return {"max_sim_scores": max_sim_scores, "max_sim": max_sim, "mean_sim": mean_sim,
+                "stdev_sim": stdev(max_sim_scores)}
+
+    def __get_most_similar_topic(self, all_matrix, topic_name, period_to_cmp):
+        topic_sim_matrix = all_matrix[period_to_cmp]
+
+        if period_to_cmp in ['bf_bf_matrix', 'af_af_matrix']:
+            matched_topic = np.argmax(np.hstack((topic_sim_matrix[topic_name, :topic_name],
+                                                 topic_sim_matrix[topic_name, topic_name + 1:])))
+        else:
+            matched_topic = np.argmax(topic_sim_matrix[topic_name, :])
+
+        return matched_topic, topic_sim_matrix[topic_name, matched_topic]
+
+    def __write_sim_matrix(self, all_matrix):
+        for key, matrix in all_matrix.items():
+            np.save('data/model1/matrix/{}.npy'.format(key), matrix)
+            np.savetxt('data/model1/matrix/{}.txt'.format(key), matrix)
+
+    def __compare_topics(self, bf_topics, af_topics):
+        all_matrix = self.__get_sim_matrix(bf_topics, af_topics)
+        self.__write_sim_matrix(all_matrix)
+
+        for key, matrix in all_matrix.items():
+            within = False
+            if key in ['bf_bf_matrix', 'af_af_matrix']:
+                within = True
+            stats = self.__compare_sim(matrix, within)
+            print("\nSimilarities over all pairs\n")
+            print("key", key, "sim scores", stats['sim_scores'], "max", stats['max_sim'], "mean", stats['mean_sim'],
+                "stdev", stats["stdev_sim"])
+
+            stats = self.__compare_max_sim(matrix, within)
+            print("\nMax Similarities over each topic\n")
+            print("key", key, "sim max scores", stats['max_sim_scores'], "max", stats['max_sim'], "mean", stats['mean_sim'],
+                  "stdev", stats["stdev_sim"])
 
     def extract_tweet_with_period(self, incident, input_paths, output_path, metadata_path):
         """
         extract tweets before and after disaster start
         input_paths are two paths, geotagged and timeline folders
         """
-        file_bf = os.path.join(output_path, "{}_tweets_bf_test.csv".format(incident))
-        file_af = os.path.join(output_path, "{}_tweets_af_test.csv".format(incident))
+        file_bf = os.path.join(output_path, "{}_tweets_bf.csv".format(incident))
+        file_af = os.path.join(output_path, "{}_tweets_af.csv".format(incident))
 
         if os.path.isfile(file_bf) and os.path.isfile(file_af):
             logging.debug("Tweets already extracted")
@@ -265,11 +350,12 @@ class TopicModeler:
                         out_file.write(','.join(line))
                         out_file.write('\n')
 
+
 logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 input_paths = ["/Users/stellachoi/Box Sync/research_work/events_tweets/Event - 319 - Moore Tornado/geotagged_from_archive/",
-               "/Users/stellachoi/Box Sync/research_work/events_tweets/Event - 319 - Moore Tornado/user_timelines/"]
-incident_metadata_path = '/Users/stellachoi/Box Sync/research_work/data_helper/incident_metadata.csv'
-output_path = "/Users/stellachoi/Box Sync/research_work/disaster_social/twitter_analysis/data/topic_models/topics"
+               "/Users/stellachoi/Box Sync/research_work/events_tweets /Event - 319 - Moore Tornado/user_timelines/"]
+incident_metadata_path = '/Users/stellachoi/Box Sync/research_work/disaster_analysis/incident_metadata.csv'
+output_path = "/Users/stellachoi/Box Sync/research_work/disaster_analysis/data"
 incident = 319
 analyzer = TopicModeler()
 # corpus = analyzer.extract_tweet_text(319, 'data/selected_incident_tweets/')
@@ -277,10 +363,16 @@ corpus = analyzer.extract_tweet_with_period(incident, input_paths, output_path, 
 
 print("tweet_bf_len: {} tweet_af_len: {}".format(len(corpus[0]), len(corpus[1])))
 
-num_topic = 10
-lda_models = analyzer.find_topics_by_period(corpus, 50, num_topic, 319)
-#for i in range(1, 9):
-#    num_topic = i * 20
-#    lda_models = analyzer.find_topics_by_period(corpus, 10000, num_topic, 319)
+#num_topic = 100
+#lda_models = analyzer.find_topics_by_period(corpus, 10000, num_topic, 319)
+
+perplexity = {}
+for i in range(1, 9):
+    num_topic = i * 20
+    result = analyzer.find_topics_by_period(corpus, 10000, num_topic, 319, True)
+    perplexity[num_topic] = result
+
+print("perplexity", perplexity)
+
 # analyzer.label_documents(lda_model, 319, 'data/selected_incident_tweets/')
 

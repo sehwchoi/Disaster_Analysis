@@ -4,6 +4,7 @@ from sklearn.decomposition import LatentDirichletAllocation
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.pipeline import Pipeline
 import pyLDAvis.sklearn
+import matplotlib.pyplot as plt
 
 import sys
 import os
@@ -18,6 +19,7 @@ import time
 import pickle
 import numpy as np
 from collections import OrderedDict
+from statistics import mean, stdev
 
 import itertools
 import math
@@ -47,10 +49,10 @@ class TopicModeler:
 
     def find_n_topics(self, tweets, n_features, n_topics, incident):
         # train the model on the whole data
-        override = False
-
+        override = True
+        backup_name = "backup/topic_pipeline_100_0305_1.p"
         if override:
-            pipeline = pickle.load(open("backup/topic_pipeline_100_v1.p", "rb"))
+            pipeline = pickle.load(open(backup_name, "rb"))
             model = pipeline.transform(tweets)
             lda = pipeline.named_steps['lda']
             vect = pipeline.named_steps['vect']
@@ -60,7 +62,7 @@ class TopicModeler:
             ('vect', CountVectorizer(max_df=0.95, min_df=2,
                         max_features=n_features,
                         stop_words='english')),
-            ('lda', LatentDirichletAllocation(n_topics=n_topics,
+            ('lda', LatentDirichletAllocation(n_components=n_topics,
                                               max_iter=10,
                                               learning_method='online',
                                               learning_offset=20.)),
@@ -68,7 +70,7 @@ class TopicModeler:
 
         model = pipeline.fit_transform(tweets)
         # save pipeline
-        pickle.dump(pipeline, open("backup/topic_pipeline_{}_v2.p".format(n_topics), "wb+"))
+        pickle.dump(pipeline, open(backup_name, "wb+"))
 
         lda = pipeline.named_steps['lda']
         vect = pipeline.named_steps['vect']
@@ -88,8 +90,8 @@ class TopicModeler:
         return word_dists
 
     def write_topics(self, period, top_topics_words, top_topics, average):
-        with codecs.open(''.join(['data/topic_models/topics/', str(num_topic) + "_" + str(incident) + "_"
-                                  + period, '_topics.csv']), "w+",'utf-8') as out_file:
+        with codecs.open(''.join(['data/model2/', str(num_topic) + "_" + str(incident) + "_"
+                                  + period, '_topics2.csv']), "w+",'utf-8') as out_file:
             writer = csv.writer(out_file, delimiter=',', quoting=csv.QUOTE_MINIMAL)
             for i, topic in enumerate(top_topics_words):
                 topic_str = "topic" + str(top_topics[i]) + " | " + str(average[top_topics[i]])
@@ -135,10 +137,44 @@ class TopicModeler:
         self.write_topics('af', result_af['top_topics_words'], result_af['top_topics'], result_af['avg'])
         print("\n\n")
 
+        x_coordinate = [i + 1 for i in range(len(result_bf['avg']))]
+        #plt.xticks(x_coordinate, rotation='vertical')
+        plt.plot(x_coordinate, result_bf['avg'], 'b')
+        plt.plot(x_coordinate, result_af['avg'], 'g')
+        plt.title("Topic distribution over periods")
+        plt.show()
+
+        print("topic distribution difference: \n")
+        abs_diff = self.__distribute_diff(result_bf['avg'], result_af['avg'])
+        print("mean", mean(abs_diff), "stdev", stdev(abs_diff))
+
+        plt.plot(x_coordinate, abs_diff, 'b')
+        plt.title("Topic distribution difference")
+        plt.show()
+
+        print("Log transform on the difference: \n")
+        abs_diff = self.__distribute_diff(np.log(result_bf['avg']), np.log(result_af['avg']))
+        print("log mean", mean(abs_diff), "stdev", stdev(abs_diff))
+        plt.plot(x_coordinate, abs_diff, 'b')
+        plt.title("Topic Log distribution difference")
+        plt.show()
+
         print("distribution similarity: \n")
         print(self.__consine_similarirty(result_bf['avg'], result_af['avg']))
         print(list(top_topics_bf | top_topics_af))
         print(list(set(top_topics_bf).symmetric_difference(set(top_topics_af))))
+
+    def __distribute_diff(self, avg1, avg2):
+        diff = avg1 - avg2
+        #print("diff", diff)
+
+        abs_diff = np.absolute(diff)
+        topics = abs_diff.argsort()[::-1]
+
+        print("abs_diff", abs_diff)
+        print("topics sorted by diff", topics)
+
+        return abs_diff
 
     def __consine_similarirty(self, vec1, vec2):
         numerator = np.dot(vec1, vec2)
@@ -226,7 +262,7 @@ class TopicModeler:
 logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 input_paths = ["/Users/stellachoi/Box Sync/research_work/events_tweets/Event - 319 - Moore Tornado/geotagged_from_archive/",
                "/Users/stellachoi/Box Sync/research_work/events_tweets/Event - 319 - Moore Tornado/user_timelines/"]
-incident_metadata_path = '/Users/stellachoi/Box Sync/research_work/data_helper/incident_metadata.csv'
+incident_metadata_path = '/Users/stellachoi/Box Sync/research_work/disaster_analysis/incident_metadata.csv'
 output_path = "/Users/stellachoi/Box Sync/research_work/disaster_analysis/data"
 incident = 319
 analyzer = TopicModeler()

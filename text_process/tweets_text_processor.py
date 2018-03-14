@@ -17,6 +17,7 @@ from meta_data_helper import EventMetaDataHelper
 class TextProcessor(object):
     geotag_folder = "geotagged_from_archive"
     timeline_folder = "user_timelines"
+    stemmer = nltk.stem.PorterStemmer()
 
     """ Reads all files for all events and counts word, hashtag, emojis frequencies by date for each event
 
@@ -79,6 +80,7 @@ class TextProcessor(object):
                                 timeline_files.append(filename)
         return geotag_files, timeline_files
 
+    # tokenize unique words
     def __tokenize_tweet(self, tweet):
         """ tokenize tweet text into word, hashtag word, and emojis all"""
         # remove users and any links
@@ -96,6 +98,30 @@ class TextProcessor(object):
                 # filter out any stopword and a word already added
                 if (w not in self.stop_words) and (w not in words_filtered):
                     words_filtered.append(w)
+
+        return words_filtered
+
+    # tokenize as it is
+    def __tokenize_tweet2(self, tweet):
+        """ tokenize tweet text into word, hashtag word, and emojis all"""
+        # remove users and any links
+        tweet = re.sub(r"(@[a-zA-Z0-9_]+)|(\w+:\/\/\S+)", " ", tweet)
+        # logging.debug(tweet)
+
+        tweet_bytes = tweet.encode()
+        #logging.debug("tweet bytes: {}".format(tweet_bytes))
+        words = TweetTokenizer().tokenize(tweet_bytes)
+        words_filtered = []
+        for w in words:
+            w = w.lower()
+            # include str only if emoji, alphanumeric, and hashtag strings
+            if (w in UNICODE_EMOJI) or (w.isalnum()) or (w.startswith("#")):
+                # filter out any stopword and a word already added
+                if w not in self.stop_words:
+                    w = self.stemmer.stem(w)
+                    if len(w.strip()) > 2:
+                        words_filtered.append(w)
+
         return words_filtered
 
     def __update_count(self, words, date):
@@ -139,7 +165,7 @@ class TextProcessor(object):
                         tweet_loc_datetime = tweet_date_local
                         date_str = str(tweet_date_local.date())
                         # logging.debug("tweet: {} date: {}".format(tweet_text, date))
-                        words = self.__tokenize_tweet(tweet_text)
+                        words = self.__tokenize_tweet2(tweet_text)
                         # logging.debug(words)
                         if self.model is "word_count":
                             self.__update_count(words, date_str)
@@ -158,6 +184,7 @@ class TextProcessor(object):
                 except Exception as e:
                     logging.debug("could not read tweet error: {}".format(e))
 
+            #print("tweet_bf", tweets_bf)
             return [tweets_bf, tweets_af]
 
     def process_tweets(self, event):
