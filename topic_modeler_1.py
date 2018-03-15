@@ -3,26 +3,21 @@ from random import shuffle
 from sklearn.decomposition import LatentDirichletAllocation
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
 
 import sys
 import os
 import logging
 import re
 import csv
-import json
-import smart_open
 import codecs
 import nltk
-import time
 import pickle
 import numpy as np
 import seaborn as sns
 
 from collections import OrderedDict
 from statistics import mean, stdev
-
-import itertools
-import math
 
 # import external libraries
 from text_process.tweets_text_processor import TextProcessor
@@ -36,14 +31,12 @@ class TopicModeler:
     def __init__(self):
         pass
 
-    def train_test_split(self, tweets):
-        num_doc = len(tweets)
-        pivot = int(num_doc*0.8)
-        train = tweets[:pivot]
-        test = tweets[pivot:]
-
-        return train, test
-
+    """
+    Runs a topic modeling over the tweets in each period given the number of features and the number of topics
+    
+    @param corpus: list of tweets for each period
+    @return: returns the result of topic distributions
+    """
     def find_topics_by_period(self, corpus, n_features, n_topics, incident, perplexity=False):
         topics_by_period = []
         pipelines = []
@@ -51,8 +44,9 @@ class TopicModeler:
         perplexity_result = []
         for index, tweets in enumerate(corpus):
             period_type = 'bf' if index is 0 else 'af'
+            # It this is to measure perplexity, it splits the corpus in to train and test sets and runs the perplexity
             if perplexity:
-                train, test = self.train_test_split(tweets)
+                train, test = train_test_split(tweets, test_size=0.2)
                 [pipeline, model, lda, vect] = self.find_n_topics(train, n_features, n_topics, incident, period_type)
                 perplexity = lda.perplexity(vect.transform(test))
                 perplexity_result.append(perplexity)
@@ -68,10 +62,17 @@ class TopicModeler:
                                   topics_by_period[1]['topic_word_dist_list'])
             return topics_by_period
 
+    """
+    Sets CountVectorizer and LDA, and train a model
+
+    @return: returns the pipeline, trained model, lda, and word vetor
+    """
     def find_n_topics(self, tweets, n_features, n_topics, incident, period):
         # train the model on the whole data
         override = False
         backup_name = "backup/topic1_pipeline_{}_{}_perplex.p".format(n_topics, period)
+
+        # if it is override, load the trained pipeline from the file
         if override:
             pipeline = pickle.load(open(backup_name, "rb"))
             model = pipeline.transform(tweets)
@@ -90,7 +91,7 @@ class TopicModeler:
         ])
 
         model = pipeline.fit_transform(tweets)
-        # save pipeline
+        # save the trained pipeline
         pickle.dump(pipeline, open(backup_name, "wb+"))
 
         lda = pipeline.named_steps['lda']
@@ -100,6 +101,7 @@ class TopicModeler:
 
     """
     word_dists e.g. [{word1: weight1, word2: weight2, word3: weight3....}, {word1, weight1, word2: weight2....}...]
+    It only keeps the top 100 words in the distribution and saves in a order by their distributions
     """
     def __get_topic_word_dist(self, component, feature_names, num_words=100):
         word_dists = []
@@ -114,8 +116,8 @@ class TopicModeler:
         return word_dists
 
     '''
-    Parse topic distribution and word distribution.
-    Return the result of topic distribution, topic name sorted by distribution, and list of topic word distribution
+    Parse topic distribution and word distribution from the tained model
+    Return the result of distribution over topics, topic name sorted by distribution, and distribution over words
     '''
     def __parse_dist_info(self, components, feature_names, model, num_topics=20):
         average = np.average(np.array(model), axis=0)
@@ -139,6 +141,9 @@ class TopicModeler:
 
         return result
 
+    """
+    Writes a topic, its ditribution, and distributions over words in to csv file
+    """
     def __write_topics(self, period, topic_word_dist_list, topic_sorted_by_dist, average):
         with codecs.open(''.join(['data/model1/', str(num_topic) + "_" + str(incident) + "_"
                                   + period, '_topics1.csv']), "w+",'utf-8') as out_file:
@@ -148,6 +153,9 @@ class TopicModeler:
                 writer.writerow([topic_str, ' | '.join([key + ' ' + str(round(value, 2)) for key, value in
                                                         topic_word_dist_list[topic_name].items()])])
 
+    """
+    flattened the topic modeling result and saves the result in a pickle file
+    """
     def __flatten_results(self, pipeline, model, period):
         components = pipeline._final_estimator.components_
         components /= components.sum(axis=1)[:, np.newaxis]
@@ -329,27 +337,6 @@ class TopicModeler:
 
         return corpus
 
-    def label_documents(self, model, incident, input_path):
-        for dirpath, dirnames, filenames in os.walk(input_path):
-            del dirnames[:]
-            for filename in [filename for filename in filenames if filename.startswith(str(incident))]:
-                for line in smart_open.smart_open(os.path.join(dirpath, filename)):
-                    tweet = json.loads(line.decode('utf-8'))
-                    tweet_id = tweet['id']
-                    tweet_time = time.strftime('%Y-%m-%d %H:%M:%S',
-                                               time.strptime(tweet['created_at'], '%a %b %d %H:%M:%S '
-                                                                                  '+0000 %Y'))
-                    text = tweet['text']
-                    text = ' '.join(self._preproc_text(text))
-                    topics = model.transform([text]).tolist()[0]
-                    with codecs.open(
-                            ''.join(['data/topic_models/topic_distribs/', str(incident), '_topic_distribs.csv']), "a+",
-                            'utf-8') as out_file:
-                        line = [str(tweet_id), str(tweet_time)]
-                        line.extend(map(str, topics))
-                        out_file.write(','.join(line))
-                        out_file.write('\n')
-
 
 logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 input_paths = ["/Users/stellachoi/Box Sync/research_work/events_tweets/Event - 319 - Moore Tornado/geotagged_from_archive/",
@@ -363,9 +350,10 @@ corpus = analyzer.extract_tweet_with_period(incident, input_paths, output_path, 
 
 print("tweet_bf_len: {} tweet_af_len: {}".format(len(corpus[0]), len(corpus[1])))
 
-#num_topic = 100
-#lda_models = analyzer.find_topics_by_period(corpus, 10000, num_topic, 319)
+num_topic = 100
+model_result = analyzer.find_topics_by_period(corpus, 10000, num_topic, 319)
 
+"""
 perplexity = {}
 for i in range(1, 9):
     num_topic = i * 20
@@ -373,6 +361,4 @@ for i in range(1, 9):
     perplexity[num_topic] = result
 
 print("perplexity", perplexity)
-
-# analyzer.label_documents(lda_model, 319, 'data/selected_incident_tweets/')
-
+"""
